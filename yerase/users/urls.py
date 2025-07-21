@@ -11,6 +11,7 @@ router.register(r'shop', EcommerceViewSet, basename='shop')
 router.register(r'payment-confirmation', PaymentConfirmationViewSet, basename='payment-confirmation')
 router.register(r'courses', CourseViewSet, basename='courses')
 router.register(r'meal-plans', MealPlanViewSet, basename='meal-plans')
+router.register(r'audiobook', AudioBookViewSet, basename='audiobook')
 #urlpatterns = router.urls
 
 

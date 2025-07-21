@@ -1,0 +1,1 @@
+[2025-07-20 07:52:05,128] ERROR users.views - Error occurred while fetching meal plan: ['“1” is not a valid UUID.']

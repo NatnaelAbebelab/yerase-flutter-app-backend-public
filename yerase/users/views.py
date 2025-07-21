@@ -1,8 +1,6 @@
 import logging
 import os
 import random
-from string import capwords
-
 import requests
 import secrets
 import string
@@ -15,15 +13,18 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.hashers import make_password, check_password
 from django.core.mail import EmailMessage
 from django.db import transaction
-from django.db.models import Q, F
+from django.db.models.functions import Cast
+from django.db.models import Q, F, Sum, IntegerField
 from django.http import JsonResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.template.loader import get_template
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter
+
 from .utility.token import get_tokens_for_user
 from rest_framework.decorators import permission_classes, action
 from rest_framework.response import Response
+from string import capwords
 
 from utils.exceptions import *
 from utils.permissions import role_required
@@ -547,9 +548,38 @@ class EcommerceViewSet(viewsets.ViewSet):
 
     # @permission_classes([IsAuthenticated, role_required("user")])
     @extend_schema(
-        tags=["Ecommerce Users"],
+        tags=["E-commerce Users"],
         responses={200: dict},
-        description="E-commerce view set"
+        description=""
+    )
+    @action(detail=False, methods=['get'], url_path='get-items-categories')
+    def get_items_categories(self, request):
+        try:
+            categories = ItemCategory.objects.all().order_by("-record_time")
+
+            if not categories:
+                raise Http404
+
+            paginator = ItemCategoryDataPagination()
+            categories_list = paginator.paginate_category(request, categories)
+
+            return JsonResponse(
+                {"result": "success", "message": "Item categories list", "content": categories_list.data},
+                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Items categories is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching Items categories: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching Items categories."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    # @permission_classes([IsAuthenticated, role_required("user")])
+    @extend_schema(
+        tags=["E-commerce Users"],
+        responses={200: dict},
+        description=""
     )
     @action(detail=False, methods=['get'], url_path='get-items')
     def get_items(self, request):
@@ -562,8 +592,23 @@ class EcommerceViewSet(viewsets.ViewSet):
             paginator = ItemDataPagination()
             items_list = paginator.paginate_item(request, items)
 
+            response = {
+                "items": []
+            }
+
+            for item in items_list.data:
+                temp_data = []
+
+                category = ItemCategory.objects.filter(_id=item.category)
+                category_name = capwords(category.name) if category else "UNCATEGORIZED"
+                temp_data.append(category_name)
+
+                temp_data.append(item)
+
+                response["items"].append(temp_data)
+
             return JsonResponse(
-                {"result": "success", "message": "Items list", "content": items_list.data},
+                {"result": "success", "message": "Items list", "content": response},
                 status=status.HTTP_200_OK)
 
         except Http404:
@@ -576,19 +621,124 @@ class EcommerceViewSet(viewsets.ViewSet):
 
     # @permission_classes([IsAuthenticated, role_required("user")])
     @extend_schema(
-        tags=["Ecommerce Users"],
+        tags=["E-commerce Users"],
         responses={200: dict},
         description="Get a specific item by ID"
     )
     @action(detail=False, methods=['get'], url_path='get-item/(?P<_id>[^/.]+)')
     def get_item(self, request, _id=None):
         try:
-            item = get_object_or_404(Item, _id=_id)
+            item = get_object_or_404(Item.objects, _id=_id)
 
-            return JsonResponse(
-                {"result": "success", "message": "Item found", "content": item},
-                status=status.HTTP_200_OK
-            )
+            response = {
+                "_id": item._id,
+                "name": capwords(item.name),
+                "category": {},
+                "min_value": item.min_value,
+                "max_value": item.max_value,
+                "thumbnail": item.thumbnail,
+                "overview": item.overview,
+                "description": item.description,
+                "variation": {},
+                "measurement": {},
+                "price": item.price,
+                "total_purchase_count": item.total_purchase_count,
+                "quantity": item.quantity,
+                "review_counts": {},
+                "reviews": {},
+                "user_review": {}
+            }
+
+            category = ItemCategory.objects.filter(_id=item.category)
+            category_name = capwords(category.name) if category else "UNCATEGORIZED"
+            color = category.color
+
+            response["category"] = {
+                "name": category_name,
+                "color": color
+            }
+
+            # Get variations
+            variation = {}
+            for index, v in enumerate(item.variation_qty):
+                if int(v) > 0:
+                    data = {
+                        'img': item.variation_img[index],
+                        'color': item.variation_color[index],
+                        'index': index
+                    }
+                    variation[str(index)] = data
+
+            response["variation"] = variation
+
+            # Get measurements
+            measurement = {
+                'size': 'display-none',
+                'quantity': 'display-none',
+                'type': 'free',
+                'min': '0',
+                'max': '0'
+            }
+
+            if category.measurement == 'l':
+                measurement['quantity'] = 'display-block'
+                measurement['type'] = 'Liter'  # Fixed typo
+                measurement['min'] = str(item.min_value)  # Ensure string
+                measurement['max'] = str(item.max_value)  # Ensure string
+            elif category.measurement == 'kg':
+                measurement['quantity'] = 'display-block'
+                measurement['type'] = 'Mass'
+                measurement['min'] = str(item.min_value)  # Ensure string
+                measurement['max'] = str(item.max_value)  # Ensure string
+            elif category.measurement == 's':
+                measurement['size'] = 'display-block'
+                measurement['type'] = 'Size'
+            else:
+                logger.error(f"Unknown measurement type '{category.measurement}' for category {category.name}")
+
+            response["measurement"] = measurement
+
+            # Get item review
+            item_review = ItemReview.objects.filter(item=item._id)
+            total_rate = item_review.aggregate(total_rate=Sum(Cast('rate', IntegerField())))['total_rate']
+            total_rate = total_rate if total_rate else 0
+            review_count = item_review.count()
+            average_review = round(float(total_rate / review_count if review_count != 0 else 4), 2)
+            int_part, decimal_part = divmod(average_review, 1)
+            my_array = ["Item"] * int(int_part)
+            half_star = ["item"] * 1 if decimal_part != 0 else ["item"] * 0
+            response["review_counts"]['average_review'] = average_review
+            response["review_counts"]['fullstars'] = my_array
+            response["review_counts"]['halfstars'] = half_star
+            response["review_counts"]['total_review'] = item_review.count()
+
+            # Get items review
+            item_review = item_review.filter(~Q(active_user=request.user))
+            for r in item_review[:4]:
+                data = {
+                    "review_id": r._id,
+                    "photo": "user-11.jpg",
+                    "fullname": "Customer",
+                    "div": "d-md-flex",
+                    "display": "display-block",
+                    "review": r.review,
+                    "rate": ['item'] * int(r.rate)
+                }
+                response['reviews'][str(r._id)] = data
+
+            # Get current users
+            current_user_review = item_review.filter(Q(active_user=request.user) & Q(status='publish')).first()
+            if current_user_review and CustomUser.objects.filter(email=request.user).exists():
+                c = CustomUser.objects.get(email=request.user)
+                response["user_review"]['photo'] = c.profile
+                response["user_review"]['fullname'] = string.capwords(c.fname) + ' ' + string.capwords(c.lname)
+                response["user_review"]['div'] = 'd-md-flex'
+                response["user_review"]['display'] = 'display-block'
+                response["user_review"]['review'] = current_user_review.review
+                response["user_review"]['rate'] = ['item'] * int(current_user_review.rate)
+
+            return JsonResponse({"result": "success", "message": "Item found", "content": response}, status=status.HTTP_200_OK)
+
         except Http404:
             return JsonResponse(
                 {"result": "error", "message": "Item not found."},
@@ -603,7 +753,7 @@ class EcommerceViewSet(viewsets.ViewSet):
 
     #@permission_classes([IsAuthenticated, role_required("user")])
     @extend_schema(
-        tags=["Ecommerce Users"],
+        tags=["E-commerce Users"],
         request=AddToCartSerializer,
         responses={200: dict},
         description="E-commerce view set"
@@ -708,7 +858,7 @@ class EcommerceViewSet(viewsets.ViewSet):
 
     # @permission_classes([IsAuthenticated, role_required("user")])
     @extend_schema(
-        tags=["Ecommerce Users"],
+        tags=["E-commerce Users"],
         request=AddToCartSerializer,
         responses={200: dict},
         description="E-commerce view set"
@@ -770,7 +920,7 @@ class EcommerceViewSet(viewsets.ViewSet):
 
     # @permission_classes([IsAuthenticated, role_required("user")])
     @extend_schema(
-        tags=["Ecommerce Users"],
+        tags=["E-commerce Users"],
         request=AddItemReviewSerializer,
         responses={200: dict},
         description="E-commerce view set"
@@ -837,7 +987,7 @@ class EcommerceViewSet(viewsets.ViewSet):
 
     # @permission_classes([IsAuthenticated, role_required("user")])
     @extend_schema(
-        tags=["Ecommerce Users"],
+        tags=["E-commerce Users"],
         request=DeleteItemCartSerializer,
         responses={200: dict},
         description="E-commerce view set"
@@ -1114,7 +1264,22 @@ class CourseViewSet(viewsets.ViewSet):
             paginator = CourseDataPagination()
             courses_list = paginator.paginate_courses(request, courses)
 
-            return JsonResponse({"result": "success", "message": "Courses list", "content": courses_list.data},
+            response = {
+                "courses": []
+            }
+
+            for course in courses_list.data:
+                temp_data = []
+
+                category = CourseCategory.objects.filter(_id=course.get('category')).first()
+                category_name = capwords(category.name) if category else "UNCATEGORIZED"
+                temp_data.append(capwords(category_name))
+
+                temp_data.append(course)
+
+                response["courses"].append(temp_data)
+
+            return JsonResponse({"result": "success", "message": "Courses list", "content": response},
                                 status=status.HTTP_200_OK)
 
         except Http404:
@@ -1243,8 +1408,23 @@ class MealPlanViewSet(viewsets.ViewSet):
             paginator = MealPlanDataPagination()
             meal_plans_list = paginator.paginate_meal_plan(request, meal_plans)
 
+            response = {
+                "meal_plans": []
+            }
+
+            for meal_plan in meal_plans_list.data:
+                temp_data = []
+
+                course = Course.objects.filter(_id=meal_plan.course).first()
+                course_name = capwords(course.title) if course else "UNCATEGORIZED"
+                temp_data.append(capwords(course_name))
+
+                temp_data.append(meal_plan)
+
+                response["meal_plans"].append(temp_data)
+
             return JsonResponse(
-                {"result": "success", "message": "Meal plans list", "content": meal_plans_list.data},
+                {"result": "success", "message": "Meal plans list", "content": response},
                 status=status.HTTP_200_OK)
 
         except Http404:
@@ -1328,7 +1508,131 @@ class MealPlanViewSet(viewsets.ViewSet):
             return JsonResponse({"result": "error", "message": "Error occurred while fetching meal plan."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+class AudioBookViewSet(viewsets.ViewSet):
+    """
+    Audiobook view set
+    """
 
+    # @permission_classes([IsAuthenticated, role_required("user")])
+    @extend_schema(
+        tags=["Audiobook Users"],
+        responses={200: dict},
+        description=""
+    )
+    @action(detail=False, methods=['get'], url_path='get-audio-books-categories')
+    def get_audio_books_categories(self, request):
+        try:
+            categories = AudiobookCategory.objects.all().order_by("-record_time")
 
+            if not categories:
+                raise Http404
 
+            paginator = AudiobookCategoryDataPagination()
+            categories_list = paginator.paginate_audiobook_category(request, categories)
 
+            return JsonResponse(
+                {"result": "success", "message": "Audiobook categories list", "content": categories_list.data},
+                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Audiobook categories is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching audio books categories: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching audio book categories."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    # @permission_classes([IsAuthenticated, role_required("user")])
+    @extend_schema(
+        tags=["AudioBook Users"],
+        responses={200: dict},
+        description=""
+    )
+    @action(detail=False, methods=['get'], url_path='get-audio-books')
+    def get_audio_books(self, request):
+        try:
+            audio_books = Audiobook.objects.all().order_by("-record_time")
+
+            if not audio_books:
+                raise Http404
+
+            paginator = AudiobookDataPagination()
+            audio_books_list = paginator.paginate_audiobook(request, audio_books)
+
+            response = {
+                "audiobooks": [],
+            }
+
+            for audio_book in audio_books_list.data:
+                temp_data = []
+
+                category = AudiobookCategory.objects.filter(_id=audio_book.get('category')).first()
+                category_name = capwords(category.name) if category else "UNCATEGORIZED"
+                temp_data.append(capwords(category_name))
+
+                temp_data.append(audio_book)
+
+                response["audiobooks"].append(temp_data)
+
+            return JsonResponse(
+                {"result": "success", "message": "Audiobooks list", "content": response},
+                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Audiobooks is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching audiobooks: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching audiobooks."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    # @permission_classes([IsAuthenticated, role_required("user")])
+    @extend_schema(
+        tags=["Audiobook Users"],
+        responses={200: dict},
+        description=""
+    )
+    @action(detail=False, methods=['get'], url_path='get-audio-book/(?P<_id>[^/.]+)')
+    def get_audio_book(self, request, _id=None):
+        try:
+            get_audio_book = get_object_or_404(Audiobook.objects, _id=_id)
+
+            # response structure course info + lessons + meal plans
+            response = {
+                "isSubscribed": "false",
+                "audio_book": {}
+            }
+
+            # check if the logged user is subscribed to package
+            logged_user = CustomUser.objects.filter(email=request.use).first()
+            user = CustomUsers.objects.filter(user=logged_user).first()
+
+            if "audio book" in user["package"]:
+                response["isSubscribed"] = "true"
+
+            audio_book_category = AudiobookCategory.objects.filter(_id=get_audio_book.category)
+            category_name = capwords(audio_book_category.name) if audio_book_category else "UNCATEGORIZED"
+
+            # Get the audiobook response
+            response["audio_book"] = {
+                "_id": get_audio_book._id,
+                "title": capwords(get_audio_book.title),
+                "category": category_name,
+                "overview": get_audio_book.overview,
+                "description": get_audio_book.description,
+                "audio": get_audio_book.audio,
+                "sliced_audio": get_audio_book.sliced_audio,
+                "duration": get_audio_book.duration,
+                "thumbnail": get_audio_book.thumbnail,
+            }
+
+            return JsonResponse({"result": "success", "message": "Audiobook", "content": response},
+                                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Audiobook is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching audiobook: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching audiobook."},
+                                status=status.HTTP_400_BAD_REQUEST)
