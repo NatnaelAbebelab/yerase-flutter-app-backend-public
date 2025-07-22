@@ -1416,7 +1416,7 @@ class CourseViewSet(viewsets.ViewSet):
                 "courses": []
             }
 
-            for course in courses_list.data:
+            for course in courses_list.data['results']:
                 temp_data = []
 
                 category = CourseCategory.objects.filter(_id=course.get('category')).first()
@@ -1616,7 +1616,7 @@ class MealPlanViewSet(viewsets.ViewSet):
             course = Course.objects.filter(_id=get_meal_plan.course)
             course_name = ""
             if course:
-                course_name = course.get("title")
+                course_name = course.title
 
             # Get the meal plan response
             response["meal_plans"] = {
@@ -1711,7 +1711,7 @@ class AudioBookViewSet(viewsets.ViewSet):
                 "audiobooks": [],
             }
 
-            for audio_book in audio_books_list.data:
+            for audio_book in audio_books_list.data['results']:
                 temp_data = []
 
                 category = AudiobookCategory.objects.filter(_id=audio_book.get('category')).first()
