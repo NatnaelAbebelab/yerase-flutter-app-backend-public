@@ -781,7 +781,7 @@ class EcommerceViewSet(viewsets.ViewSet):
                 # Data Validation
                 user = get_object_or_404(CustomUser.objects, email=request.user)
 
-                cart = Cart.objects.filter(owner=user.email).first();
+                cart = Cart.objects.filter(owner=user.email).first()
                 wishlist = Wishlist.objects.filter(owner=user.email).first()
 
                 if cart:
@@ -859,6 +859,113 @@ class EcommerceViewSet(viewsets.ViewSet):
     # @permission_classes([IsAuthenticated, role_required("user")])
     @extend_schema(
         tags=["E-commerce Users"],
+        responses={200: dict},
+        description="E-commerce view set"
+    )
+    @action(detail=False, methods=['get'], url_path='get-cart-items')
+    def get_cart_items(self, request):
+        try:
+            # Get cart of the current user
+            user = get_object_or_404(CustomUser.objects, email=request.user)
+            cart = get_object_or_404(Cart.objects, owner=user.email)
+
+            cart_response = {
+                "items": [],
+                "total_price": 0
+            }
+
+            for item in cart.items:
+                index = cart.items.index(item)
+
+                # Get items info
+                cart_item = get_object_or_404(Item.objects, _id=item)
+
+                temp_data = {
+                    "_id": cart_item._id,
+                    "name": capwords(cart_item.name),
+                    "thumbnail": cart_item.thumbnail,
+                    "quantity": cart.quantity[index],
+                    "color": cart.color[index],
+                    "measurement": cart.measurement[index]
+                }
+                cart_response["items"].append(temp_data)
+
+            cart_response["total_price"] = cart.total_price
+
+            return JsonResponse({"result": "success", "message": "Fetch cart items", "content": cart_response}, status=status.HTTP_200_OK)
+
+        except Http404:
+            return Response({"result": "error", "message": "Record is not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching cart: %s", e)
+            return Response({"result": "error", "message": "Error occurred while fetching cart"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+    # @permission_classes([IsAuthenticated, role_required("user")])
+    @extend_schema(
+        tags=["E-commerce Users"],
+        request=DeleteCartItemSerializer,
+        responses={200: dict},
+        description="E-commerce view set"
+    )
+    @action(detail=False, methods=['delete'], url_path='delete-cart-item')
+    def delete_cart_item(self, request):
+        serializer = DeleteCartItemSerializer(data=request.data)
+
+        try:
+            if not serializer.is_valid():
+                raise BaseClassSerializerException(serializer.errors)
+
+            item = serializer.validated_data["item"]
+
+            # Value Validation
+            validator = ToCartDataValidator(serializer.validated_data,
+                                            fields=["item"], null_validation=True)
+            if not validator.is_valid():
+                raise ValidationException(validator.errors)
+
+            with transaction.atomic():
+                # Data Validation
+                user = get_object_or_404(CustomUser.objects, email=request.user)
+
+                cart = get_object_or_404(Cart.objects, owner=user)
+
+                if not item in cart.items:
+                    raise ValueErrorException("Item is not found in your cart")
+
+                cart_item = get_object_or_404(Item.objects, _id=item)
+
+                price = cart_item.price
+                # get item quantity
+                index = cart.items.index(item)
+                quantity = cart.quantity[index]
+                cart.total_price = float(cart.total_price) - (float(price) * int(quantity))
+
+                cart.items.pop(index)
+                cart.quantity.pop(index)
+                cart.measurement.pop(index)
+                cart.color.pop(index)
+
+                cart.record_time = today
+                cart.save()
+
+                return JsonResponse({"result": "success", "message": "Item is removed successfully"},
+                                    status=status.HTTP_200_OK)
+
+        except (BaseClassSerializerException, ValidationException, ValueErrorException) as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while deleting item from cart: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while deleting item from cart"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    # @permission_classes([IsAuthenticated, role_required("user")])
+    @extend_schema(
+        tags=["E-commerce Users"],
         request=AddToCartSerializer,
         responses={200: dict},
         description="E-commerce view set"
@@ -916,6 +1023,108 @@ class EcommerceViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error("Error occurred while carting: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while carting"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    # @permission_classes([IsAuthenticated, role_required("user")])
+    @extend_schema(
+        tags=["E-commerce Users"],
+        responses={200: dict},
+        description="E-commerce view set"
+    )
+    @action(detail=False, methods=['get'], url_path='get-wishlist-items')
+    def get_wishlist_items(self, request):
+        try:
+            # Get cart of the current user
+            user = get_object_or_404(CustomUser.objects, email=request.user)
+            wishlist = get_object_or_404(Wishlist.objects, owner=user.email)
+
+            wishlist_response = {
+                "items": [],
+                "total_price": 0
+            }
+
+            for item in wishlist.items:
+                index = wishlist.items.index(item)
+
+                # Get items info
+                wishlist_item = get_object_or_404(Item.objects, _id=item)
+
+                temp_data = {
+                    "_id": wishlist_item._id,
+                    "name": capwords(wishlist_item.name),
+                    "thumbnail": wishlist_item.thumbnail,
+                    "price": wishlist_item.price,
+                }
+                wishlist_response["items"].append(temp_data)
+
+            wishlist_response["total_price"] = wishlist.total_price
+
+            return JsonResponse({"result": "success", "message": "Fetch wishlist items", "content": wishlist_response},
+                                status=status.HTTP_200_OK)
+
+        except Http404:
+            return Response({"result": "error", "message": "Record is not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching wishlist: %s", e)
+            return Response({"result": "error", "message": "Error occurred while fetching wishlist"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+    # @permission_classes([IsAuthenticated, role_required("user")])
+    @extend_schema(
+        tags=["E-commerce Users"],
+        request=DeleteWishListItemSerializer,
+        responses={200: dict},
+        description="E-commerce view set"
+    )
+    @action(detail=False, methods=['delete'], url_path='delete-wishlist-item')
+    def delete_wishlist_item(self, request):
+        serializer = DeleteWishListItemSerializer(data=request.data)
+
+        try:
+            if not serializer.is_valid():
+                raise BaseClassSerializerException(serializer.errors)
+
+            item = serializer.validated_data["item"]
+
+            # Value Validation
+            validator = ToCartDataValidator(serializer.validated_data,
+                                            fields=["item"], null_validation=True)
+            if not validator.is_valid():
+                raise ValidationException(validator.errors)
+
+            with transaction.atomic():
+                # Data Validation
+                user = get_object_or_404(CustomUser.objects, email=request.user)
+
+                wishlist = get_object_or_404(Wishlist.objects, owner=user)
+
+                if not item in wishlist.items:
+                    raise ValueErrorException("Item is not found in your wishlist")
+
+                wishlist_item = get_object_or_404(Item.objects, _id=item)
+
+                price = wishlist_item.price
+                # get item quantity
+                index = wishlist.items.index(item)
+                wishlist.total_price = float(wishlist.total_price) - float(price)
+
+                wishlist.items.pop(index)
+
+                wishlist.record_time = today
+                wishlist.save()
+
+                return JsonResponse({"result": "success", "message": "Item is removed successfully"},
+                                    status=status.HTTP_200_OK)
+
+        except (BaseClassSerializerException, ValidationException, ValueErrorException) as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while deleting item from wishlist: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while deleting item from wishlist"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
     # @permission_classes([IsAuthenticated, role_required("user")])
@@ -983,67 +1192,6 @@ class EcommerceViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error("Error occurred while review item: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while review item"},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-    # @permission_classes([IsAuthenticated, role_required("user")])
-    @extend_schema(
-        tags=["E-commerce Users"],
-        request=DeleteItemCartSerializer,
-        responses={200: dict},
-        description="E-commerce view set"
-    )
-    @action(detail=False, methods=['delete'], url_path='delete-item-cart')
-    def delete_item_cart(self, request):
-        serializer = DeleteItemCartSerializer(data=request.data)
-
-        try:
-            if not serializer.is_valid():
-                raise BaseClassSerializerException(serializer.errors)
-
-            item = serializer.validated_data["item"]
-
-            # Value Validation
-            validator = ToCartDataValidator(serializer.validated_data,
-                                            fields=["item"], null_validation=True)
-            if not validator.is_valid():
-                raise ValidationException(validator.errors)
-
-            with transaction.atomic():
-                # Data Validation
-                user = get_object_or_404(CustomUser.objects, email=request.user)
-
-                cart = get_object_or_404(Cart.objects, owner=user)
-
-                if not item in cart.items:
-                    raise ValueErrorException("Item is not found in your cart")
-
-                cart_item = get_object_or_404(Item.objects, _id=item)
-
-                if cart_item:
-                    price = cart_item.price
-                    # get item quantity
-                    index = cart.items.index(item)
-                    quantity = cart.quantity[index]
-                    cart.total_price = float(cart.total_price) - (float(price) * int(quantity))
-
-                cart.items.pop(index)
-                cart.quantity.pop(index)
-                cart.measurement.pop(index)
-                cart.color.pop(index)
-
-                cart.record_time = today
-                cart.save()
-
-                return JsonResponse({"result": "success", "message": "Item is removed successfully"}, status=status.HTTP_200_OK)
-
-        except (BaseClassSerializerException, ValidationException, ValueErrorException) as e:
-            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
-        except Http404:
-            return JsonResponse({"result": "error", "message": "Record is not found."},
-                                status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error("Error occurred while deleting item from cart: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while deleting item from cart"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
 class PaymentConfirmationViewSet(viewsets.ViewSet):

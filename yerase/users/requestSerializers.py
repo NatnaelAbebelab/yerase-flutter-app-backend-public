@@ -65,7 +65,10 @@ class AddItemReviewSerializer(serializers.Serializer):
     rate = serializers.DecimalField(required=True, max_digits=2, decimal_places=2)
     review = serializers.CharField(required=True)
 
-class DeleteItemCartSerializer(serializers.Serializer):
+class DeleteCartItemSerializer(serializers.Serializer):
+    item = serializers.CharField(required=True)
+
+class DeleteWishListItemSerializer(serializers.Serializer):
     item = serializers.CharField(required=True)
 
 class PaymentConfirmationOrderEcommerceSerializer(serializers.Serializer):
