@@ -1,5 +1,4 @@
 # serializers.py
-from collections.abc import set_iterator
 from operator import truediv
 
 from rest_framework import serializers
@@ -197,11 +196,10 @@ class AddItemSerializer(serializers.Serializer):
     description = serializers.CharField(required=True)
     thumbnail = serializers.ImageField(required=True)
     category = serializers.CharField(required=True)
-    min_value = serializers.CharField(required=True)
-    max_value = serializers.CharField(required=True)
-    sizes = serializers.ListField(required=True)
+    min_value = serializers.CharField(required=False, default=0, source='min-value')
+    max_value = serializers.CharField(required=False, default=0, source='max-value')
+    sizes = serializers.ListField(required=False, default='-')
     price = serializers.CharField(required=True)
-    quantity = serializers.CharField(required=True)
     variation_img = serializers.ListField(required=True)
     variation_color = serializers.ListField(required=True)
     variation_qty = serializers.ListField(required=True)
@@ -251,13 +249,11 @@ class UpdatePackagePlanSerializer(serializers.Serializer):
     offers = serializers.ListField(required=False, allow_empty=True)
 
 class AddEcommercePCSerializer(serializers.Serializer):
-    order_id = serializers.CharField(required=True)
-    user_name = serializers.CharField(required=True)
     user_email = serializers.CharField(required=True)
     user_phone = serializers.CharField(required=True)
     items = serializers.ListField(required=True)
-    price = serializers.CharField(required=True)
-    method_id = serializers.CharField(required=True)
+    quantity = serializers.ListField(required=True)
+    method = serializers.CharField(required=True)
     proof = serializers.FileField(required=True)
 
 class UpdateEcommercePCSerializer(serializers.Serializer):
@@ -267,7 +263,7 @@ class UpdateEcommercePCSerializer(serializers.Serializer):
 class AddPackagePCSerializer(serializers.Serializer):
     package = serializers.CharField(required=True)
     email = serializers.CharField(required=True)
-    method_id = serializers.CharField(required=True)
+    method = serializers.CharField(required=True)
     proof = serializers.FileField(required=True)
 
 class UpdatePackagePCSerializer(serializers.Serializer):

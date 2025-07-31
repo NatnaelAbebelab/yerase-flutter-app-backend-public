@@ -1,32 +1,22 @@
 from rest_framework import serializers
 from .models import *
 
-class AdminSerializer(serializers.ModelSerializer):
+class CustomUserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = CustomAdmin
-        fields = '__all__'  # Include all fields
-        
+        model = CustomUser
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'role']
+        read_only_fields = ['id', 'username']
+
 class UserAdminSerializer(serializers.ModelSerializer):
-    fname = serializers.SerializerMethodField()
-    lname = serializers.SerializerMethodField()
-    email = serializers.SerializerMethodField()
-    role = serializers.SerializerMethodField()
+    admin = CustomUserSerializer(read_only=True)
 
     class Meta:
         model = CustomAdmin
-        fields = [f.name for f in CustomAdmin._meta.fields] + ["fname", "lname", "email", "role"]
-
-    def get_fname(self, obj):
-        return obj.admin.first_name if obj.admin else None
-
-    def get_lname(self, obj):
-        return obj.admin.last_name if obj.admin else None
-
-    def get_email(self, obj):
-        return obj.admin.email if obj.admin else None
-
-    def get_role(self, obj):
-        return obj.admin.role if obj.admin else None
+        # Include all CustomAdmin fields plus nested user info (admin)
+        fields = [
+            '_id', 'admin', 'phone', 'otp_code', 'profile', 'is_deleted',
+            'created_by', 'created_at', 'updated_by', 'updated_at', 'record_time'
+        ]
 
 class CourseCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -107,7 +97,15 @@ class AudiobookSerializer(serializers.ModelSerializer):
         fields = [f.name for f in Audiobook._meta.fields] + ["category"]
 
     def get_category(self, obj):
-        return obj.category if obj.category else None
+        category = obj.category
+        if category:
+            # Return a dictionary of relevant fields
+            return {
+                "id": category._id,
+                "name": category.name,
+            }
+        return None
+
 
 class ItemCategorySerializer(serializers.ModelSerializer):
     measurement_name = serializers.SerializerMethodField()
@@ -156,16 +154,17 @@ class PackagePlanSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class EcommercePCSerializer(serializers.ModelSerializer):
-    method_id = serializers.SerializerMethodField()
+    method = serializers.SerializerMethodField()
 
     class Meta:
         model = EcommercePC
         fields = [f.name for f in EcommercePC._meta.fields] + ["method"]
 
-    def get_method_id(self, obj):
-        return obj.method_id.name if obj.method_id else None
+    def get_method(self, obj):
+        return obj.method.name if obj.method else None
 
 class PackagePCSerializer(serializers.ModelSerializer):
+    package = PackagePlanSerializer(read_only=True)
     method = serializers.SerializerMethodField()
 
     class Meta:
@@ -173,12 +172,13 @@ class PackagePCSerializer(serializers.ModelSerializer):
         fields = [f.name for f in PackagePC._meta.fields] + ["method"]
 
     def get_method(self, obj):
-        return obj.method_id.name if obj.method_id else None
+        return obj.method.name if obj.method else None
 
 class AppointmentSerializer(serializers.ModelSerializer):
     """
     There is customer linked with appointment
     """
+    customer = CustomUserSerializer(read_only=True)
     class Meta:
         model = Appointment
         fields = '__all__'

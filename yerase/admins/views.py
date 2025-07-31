@@ -1,10 +1,11 @@
+import json
 import logging
 import os
 import random
 import requests
 import secrets
 import string
-from datetime import date
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -26,75 +27,89 @@ from mutagen.mp3 import MP3
 from mutagen.wave import WAVE
 from utils.exceptions import *
 from utils.permissions import role_required
+from utils.generateOrderId import OrderIDGenerator
 from .requestSerializers import *
 from .services.pagination import *
 from .services.roles import get_user_role
 from .services.validations import *
 from .utility.token import get_tokens_for_user
+from decimal import Decimal
 
 # Create your views here.
 logger = logging.getLogger(__name__)
 today = date.today()
 User = get_user_model()
-ROLE_CHOICES = ["super_admin", "weight_man", "purchaser", "inspector", "purchase_head", "supervisor", "factory_manager", "finance", "manager"]
+ROLE_CHOICES = ["super_admin", "weight_man", "purchaser", "inspector", "purchase_head", "supervisor", "factory_manager",
+                "finance", "manager"]
 
 """
 This is views for activities or tasks performed by admins
 """
 
+
 def generate_temp_password(length):
     characters = string.ascii_letters + string.digits + string.punctuation
     return ''.join(secrets.choice(characters) for _ in range(length))
+
+
 def generate_otp():
     return str(random.randint(100000, 999999))
+
 
 class AdminLoginView(APIView):
     """
     Class-based views for login
     """
+
     @extend_schema(
         tags=["Admin Account"],
         request=AdminLoginSerializer,
         responses={200: dict}
     )
     def post(self, request):
-        serializer = AdminLoginSerializer(data=request.data) # DRF automatically parses the request body on every request that has a body
-        
+        serializer = AdminLoginSerializer(
+            data=request.data)  # DRF automatically parses the request body on every request that has a body
+
         try:
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
 
             email = serializer.validated_data["email"].lower()
             password = serializer.validated_data["password"]
-        
+
             # Validation
             validator = AdminAccountDataValidator(serializer.validated_data, fields=["email", "password"])
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
-            
+
             user = get_object_or_404(CustomUser.objects, username=email)
             admin = CustomAdmin.objects.filter(Q(admin=user) & Q(is_deleted=False)).first()
-            
+
             if admin and check_password(password, user.password):
                 tokens = get_tokens_for_user(user)
                 login(request, user)
                 if request.user == user:
                     role = get_user_role(request.user)
-                    return JsonResponse({"result": "success", "message": "Admin logged in successfully", "content": {"logged_user": user.username, "tokens": tokens, "role": role}}, status=status.HTTP_200_OK)
+                    return JsonResponse({"result": "success", "message": "Admin logged in successfully",
+                                         "content": {"logged_user": user.username, "tokens": tokens, "role": role}},
+                                        status=status.HTTP_200_OK)
             raise InvalidAdminCredentialsException("Admin account not found")
-        
+
         except (BaseClassSerializerException, ValidationException, InvalidAdminCredentialsException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404 as e:
             return JsonResponse({"result": "error", "message": "Admin not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while login admin: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while sign in admin."}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while sign in admin."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
 
 class AdminLogoutView(APIView):
     """
     Class-based to handle logout
     """
+
     @extend_schema(
         tags=["Admin Account"],
         responses={200: dict}
@@ -102,33 +117,38 @@ class AdminLogoutView(APIView):
     def post(self, request):
         logout(request)
         return JsonResponse({"result": "success", "message": "You logged out."}, staticmethod=status.HTTP_200_OK)
-    
+
 @permission_classes([IsAuthenticated, role_required(["super_admin"])])
 class AdminAccountView(APIView):
     """
     Class-based view to manage admins accounts (CRUD on accounts)
     """
+
     @extend_schema(
         tags=["Admin Account"],
         responses={200: dict}
     )
     def get(self, request):
         try:
-            users = CustomAdmin.objects.select_related("admin").exclude(admin__role="super_admin").all().order_by("-record_time")
-            
+            users = CustomAdmin.objects.select_related("admin").exclude(admin__role="super_admin").all().order_by(
+                "-record_time")
+
             if not users.exists():
                 raise Http404
 
             paginator = AdminsDataPagination()
             admins = paginator.paginate_admins(request, users)
-            return JsonResponse({"result": "success", "message": "Admins list", "content": admins.data}, status=status.HTTP_200_OK)
-        
+            return JsonResponse({"result": "success", "message": "Admins list", "content": admins.data},
+                                status=status.HTTP_200_OK)
+
         except Http404:
-            return JsonResponse({"result": "error", "message": "Admins users not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Admins users not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while fetching admins: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while fetching admins."}, status=status.HTTP_400_BAD_REQUEST)
-    
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching admins."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
     @extend_schema(
         tags=["Admin Account"],
         request=AdminAccountCreateSerializer,
@@ -146,24 +166,27 @@ class AdminAccountView(APIView):
             email = serializer.validated_data["email"].lower()
             phone = serializer.validated_data["phone"]
             role = serializer.validated_data["role"].lower()
-        
+
             # Validation
-            validator = AdminAccountDataValidator(serializer.validated_data, fields=["fname", "lname", "email", "phone", "role"], empty_validation=True, null_validation=True)
+            validator = AdminAccountDataValidator(serializer.validated_data,
+                                                  fields=["fname", "lname", "email", "phone", "role"],
+                                                  empty_validation=True, null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
-            
+
             if CustomUser.objects.filter(username=email).exists():
                 raise EmailDuplicationException("Email is already used.")
-            
+
             temp_password = generate_temp_password(8)
             otp_code = '0'
-            
-            while 1 :
+
+            while 1:
                 otp_code = generate_otp()
-                if CustomAdmin.objects.filter(otp_code=otp_code).count() > 0 :
+                if CustomAdmin.objects.filter(otp_code=otp_code).count() > 0:
                     continue
-                else : break
-            
+                else:
+                    break
+
             user = CustomUser.objects.create(
                 first_name=fname,
                 last_name=lname,
@@ -173,26 +196,26 @@ class AdminAccountView(APIView):
                 password=make_password(temp_password),
             )
             user.save()
-            
+
             admin = CustomAdmin.objects.create(
                 admin=user,
                 phone=phone,
-                otp_code = otp_code,
-                profile = "",
+                otp_code=otp_code,
+                profile="",
                 created_by="super_admin",
                 created_at=today,
-                updated_by="startup",
+                updated_by="super_admin",
                 updated_at=today,
                 record_time=timezone.now()
             )
             admin.save()
-            
+
             # send email
             context = {
-                'fname' : fname.capitalize(),
-                'lname' : lname.capitalize(),
-                'email' : email,
-                'otp_code' : otp_code
+                'fname': fname.capitalize(),
+                'lname': lname.capitalize(),
+                'email': email,
+                'otp_code': otp_code
             }
             template = get_template('add-user-email-template.html')
             message_content = template.render(context)
@@ -201,13 +224,17 @@ class AdminAccountView(APIView):
             email = EmailMessage(subject, message, 'natnaelabebelab@gmail.com', [email])
             email.content_subtype = 'html'  # Specify that the email content is HTML
             email.send()
-            return JsonResponse({"result": "success", "message": "Admin created successfully"}, status=status.HTTP_200_OK)
-        
+
+            serializer = UserAdminSerializer(admin).data
+            return JsonResponse({"result": "success", "message": "Admin created successfully", "content": serializer},
+                                status=status.HTTP_200_OK)
+
         except (BaseClassSerializerException, ValidationException, EmailDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Exception as e:
             logger.error("Error occurred while registering user: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while registering admin."}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while registering admin."},
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Admin Account"],
@@ -216,33 +243,34 @@ class AdminAccountView(APIView):
     )
     def patch(self, request):
         serializer = AdminAccountPatchSerializer(data=request.data)
-        
+
         try:
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
-            
+
             _id = serializer.validated_data["_id"]
             fname = serializer.validated_data["fname"]
             lname = serializer.validated_data["lname"]
             email = serializer.validated_data["email"].lower()
             phone = serializer.validated_data["phone"]
             role = serializer.validated_data["role"].lower()
-            
-            
+
             if not _id:
                 raise UUIDException("Record is not found.")
             # Value Validation
-            validator = AdminAccountDataValidator(serializer.validated_data, fields=["fname", "lname", "email", "phone", "role"], null_validation=True)
+            validator = AdminAccountDataValidator(serializer.validated_data,
+                                                  fields=["fname", "lname", "email", "phone", "role"],
+                                                  null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
-            
+
             _user = CustomUser.objects.filter(username=email).first()
             if _user and CustomAdmin.objects.filter(~Q(_id=_id) & Q(admin=_user.id)).exists():
                 raise EmailDuplicationException("Email is already used.")
-            
+
             admin = get_object_or_404(CustomAdmin.objects, _id=_id)
-            user = get_object_or_404(CustomUser.objects, username=admin.admin)
-            
+            user = admin.admin
+
             if fname:
                 user.first_name = fname
             if lname:
@@ -254,19 +282,24 @@ class AdminAccountView(APIView):
                 user.role = role
 
             user.save()
-            
+
             if phone:
                 admin.phone = phone
             admin.save()
-            return JsonResponse({"result": "success", "message": "Admin account is updated successfully"}, status=status.HTTP_200_OK)
+
+            serializer = UserAdminSerializer(admin).data
+            return JsonResponse({"result": "success", "message": "Admin account is updated successfully", "content": serializer},
+                                status=status.HTTP_200_OK)
         except (BaseClassSerializerException, UUIDException, ValidationException, EmailDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Admin account not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Admin account not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while updating admin account: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while updating admin account"}, status=status.HTTP_400_BAD_REQUEST)
-    
+            return JsonResponse({"result": "error", "message": "Error occurred while updating admin account"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
     @extend_schema(
         tags=["Admin Account"],
         parameters=[OpenApiParameter(name="_id", required=True, type=str, location=OpenApiParameter.PATH)],
@@ -277,23 +310,33 @@ class AdminAccountView(APIView):
         try:
             if not _id:
                 raise UUIDException("Record not found.")
-            
+
             admin = get_object_or_404(CustomAdmin.objects, _id=_id)
-            admin.delete()
-            return JsonResponse({"result": "success", "message": "Admin account is deleted successfully."}, status=status.HTTP_200_OK)
+            user = admin.admin
+            if user.role != 'super_admin' and user.username != request.user:
+                user.delete()
+                admin.delete()
+                return JsonResponse({"result": "success", "message": "Admin account is deleted successfully."},
+                                status=status.HTTP_200_OK)
+            else:
+                return JsonResponse({"result": "error", "message": "You can't delete this use"}, status=status.HTTP_403_FORBIDDEN)
+
         except (UUIDException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Admin record not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Admin record not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while deleting admin: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while deleting admin"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while deleting admin"},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-@permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
+
 class ResetPasswordView(APIView):
     """
     Class-based view to change profile settings
     """
+
     @extend_schema(
         tags=["Admin Account"],
         request=ResetPasswordSerializer,
@@ -301,39 +344,44 @@ class ResetPasswordView(APIView):
     )
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
-        
+
         try:
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
-            
+
             password = serializer.validated_data["password"]
             otp_code = serializer.validated_data["otp_code"]
-        
+
             # Value Validation
             validator = AdminAccountDataValidator(serializer.validated_data, fields=["password"], null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
-            
+
             admin = get_object_or_404(CustomAdmin.objects, otp_code=otp_code)
-            user = get_object_or_404(CustomUser.objects, id=admin.admin)
-            
+            user = admin.admin
+
             user.password = make_password(password)
             user.save()
-            return JsonResponse({"result": "success", "message": "You have reset your password successfully."}, status=status.HTTP_200_OK)
-        
+            return JsonResponse({"result": "success", "message": "You have reset your password successfully."},
+                                status=status.HTTP_200_OK)
+
         except (BaseClassSerializerException, ValidationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "OTP code is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "OTP code is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while resetting password: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while resetting password"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while resetting password"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
 
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class AdminUpdateProfileView(APIView):
     """
     Class-based view to update admin profile
     """
+
     @extend_schema(
         tags=["Admin Account"],
         request=AdminUpdateProfileInfoSerializer,
@@ -341,39 +389,41 @@ class AdminUpdateProfileView(APIView):
     )
     def patch(self, request):
         serializer = AdminUpdateProfileInfoSerializer(data=request.data)
-        
+
         try:
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
-            
-            profile = serializer.validated_data["profile"]
+
+            profile_photo = serializer.validated_data["profile"]
             fname = serializer.validated_data["fname"]
             lname = serializer.validated_data["lname"]
             email = serializer.validated_data["email"].lower()
             phone = serializer.validated_data["phone"]
-        
+
             # Value Validation
-            validator = AdminAccountDataValidator(serializer.validated_data, fields=["fname", "lname", "email","phone"], null_validation=True)
+            validator = AdminAccountDataValidator(serializer.validated_data,
+                                                  fields=["fname", "lname", "email", "phone"], null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
-            
+
             current_user = get_object_or_404(CustomUser.objects, username=request.user)
-            current_admin = get_object_or_404(CustomAdmin.objects, admin=current_user.id)
+            current_admin = get_object_or_404(CustomAdmin.objects, admin=current_user)
 
             if CustomUser.objects.filter(~Q(id=current_user.id) & Q(email=email)).exists():
                 raise EmailDuplicationException("Email is already used.")
-            
+
             file_name = str(uuid.uuid4())
-            if profile is not None :
-                file_path = os.path.join(settings.MEDIA_ROOT, 'admin/admins-profile', file_name + '.' + profile.name.split('.')[-1])
+            if profile_photo is not None:
+                file_path = os.path.join(settings.MEDIA_ROOT, 'admin/admins-profile',
+                                         file_name + '.' + profile_photo.name.split('.')[-1])
                 # Ensure directory exists
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 # Save file manually
                 with open(file_path, 'wb+') as destination:
-                    for chunk in profile.chunks():
+                    for chunk in profile_photo.chunks():
                         destination.write(chunk)
-                current_admin.profile = file_name + '.' + profile.name.split('.')[-1]
-            
+                current_admin.profile = file_name + '.' + profile_photo.name.split('.')[-1]
+
             if fname:
                 current_user.first_name = fname
             if lname:
@@ -386,16 +436,21 @@ class AdminUpdateProfileView(APIView):
             if phone:
                 current_admin.phone = phone
             current_admin.save()
-            
-            return JsonResponse({"result": "success", "message": "Your profile information is updated successfully."}, status=status.HTTP_200_OK)
-        
+
+            serializer = UserAdminSerializer(current_admin).data
+
+            return JsonResponse({"result": "success", "message": "Your profile information is updated successfully.", "content": serializer},
+                                status=status.HTTP_200_OK)
+
         except (BaseClassSerializerException, ValidationException, EmailDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Your account is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Your account is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while updating profile: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while updating profile"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while updating profile"},
+                                status=status.HTTP_400_BAD_REQUEST)
 
 
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
@@ -403,6 +458,7 @@ class AdminChangePasswordView(APIView):
     """
     Class view to change password
     """
+
     @extend_schema(
         tags=["Admin Account"],
         request=AdminChangePasswordSerializer,
@@ -410,42 +466,47 @@ class AdminChangePasswordView(APIView):
     )
     def patch(self, request):
         serializer = AdminChangePasswordSerializer(data=request.data)
-        
+
         try:
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
-            
+
             old_password = serializer.validated_data["old_password"]
             new_password = serializer.validated_data["new_password"]
-        
+
             # Value Validation
             validator = AdminAccountDataValidator(serializer.validated_data, fields=["password"], null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
             current_user = get_object_or_404(CustomUser.objects, username=request.user)
-            
-            if not check_password(old_password, current_user.password) :
+
+            if not check_password(old_password, current_user.password):
                 raise WrongPasswordException("Current password is invalid.")
-            
+
             current_user.password = make_password(new_password)
             current_user.save()
-            
-            return JsonResponse({"result": "success", "message": "Your password is changed successfully."}, status=status.HTTP_200_OK)
-        
+
+            return JsonResponse({"result": "success", "message": "Your password is changed successfully."},
+                                status=status.HTTP_200_OK)
+
         except (BaseClassSerializerException, ValidationException, WrongPasswordException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Your account is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Your account is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while changing password: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while changing password"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while changing password"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
 
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class AdminRecoverPasswordView(APIView):
     """
     Class view to recover password
     """
+
     @extend_schema(
         tags=["Admin Account"],
         request=AdminRecoverPasswordSerializer,
@@ -453,56 +514,79 @@ class AdminRecoverPasswordView(APIView):
     )
     def post(self, request):
         serializer = AdminRecoverPasswordSerializer(data=request.data)
-        
+
         try:
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
-            
+
             email = serializer.validated_data["email"].lower()
-        
+
             # Value Validation
             validator = AdminAccountDataValidator(serializer.validated_data, fields=["email"], null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
-            
+
             current_user = get_object_or_404(CustomUser.objects, username=request.user)
-            current_admin = get_object_or_404(CustomAdmin.objects, admin=current_user.id)
-            
+            current_admin = get_object_or_404(CustomAdmin.objects, admin=current_user)
+
             if CustomUser.objects.filter(~Q(id=current_user.id) & Q(email=email)).exists():
                 raise EmailDuplicationException("Email is already used.")
-            
+
             temp_password = generate_temp_password(8)
             otp_code = '0'
-            while 1 :
+            while 1:
                 otp_code = generate_otp()
-                if CustomAdmin.objects.filter(otp_code=otp_code).count() > 0 :
+                if CustomAdmin.objects.filter(otp_code=otp_code).count() > 0:
                     continue
-                else : break
-            
+                else:
+                    break
+
             current_admin.otp_code = otp_code
             current_admin.save()
-            
+
             current_user.password = make_password(temp_password)
             current_user.save()
-            
-            return JsonResponse({"result": "success", "message": "You've recovered your password successfully."}, status=status.HTTP_200_OK)
-        
+
+            # send email
+            context = {
+                'fname': current_user.first_name.capitalize(),
+                'lname': current_user.last_name.capitalize(),
+                'email': current_user.email,
+                'otp_code': otp_code
+            }
+            template = get_template('add-user-email-template.html')
+            message_content = template.render(context)
+            subject = 'Recover Your Password'
+            message = message_content
+            email = EmailMessage(subject, message, 'natnaelabebelab@gmail.com', [email])
+            email.content_subtype = 'html'  # Specify that the email content is HTML
+            email.send()
+
+            return JsonResponse({"result": "success", "message": "You've recovered your password successfully."},
+                                status=status.HTTP_200_OK)
+
         except (BaseClassSerializerException, ValidationException, EmailDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Your account is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Your account is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while recovering password: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while recovering password"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while recovering password"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
 
 """
 ===============> Courses Class Based Views <=====================
 """
+
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class CourseCategoryView(APIView):
     """
     Class-based view for course category
     """
+
     @extend_schema(
         tags=["Course Category"],
         responses={200: dict}
@@ -510,21 +594,25 @@ class CourseCategoryView(APIView):
     def get(self, request):
         try:
             categories = CourseCategory.objects.all().order_by("-record_time")
-            
+
             if not categories:
                 raise Http404
 
             paginator = CourseDataPagination()
             categories_list = paginator.paginate_course_categories(request, categories)
 
-            return JsonResponse({"result": "success", "message": "Course categories list", "content": categories_list.data}, status=status.HTTP_200_OK)
-        
+            return JsonResponse(
+                {"result": "success", "message": "Course categories list", "content": categories_list.data},
+                status=status.HTTP_200_OK)
+
         except Http404:
-            return JsonResponse({"result": "error", "message": "Course categories is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Course categories is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while fetching course categories: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while fetching course categories."}, status=status.HTTP_400_BAD_REQUEST)
-    
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching course categories."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
     @extend_schema(
         tags=["Course Category"],
         request=AddCourseCategorySerializer,
@@ -541,24 +629,26 @@ class CourseCategoryView(APIView):
             description = serializer.validated_data["description"]
             color = serializer.validated_data["color"]
             icon = serializer.validated_data["icon"]
-        
+
             # Value Validation
-            validator = CourseCategoryDataValidator(serializer.validated_data, fields=["name", "color", "icon"], null_validation=True)
+            validator = CourseCategoryDataValidator(serializer.validated_data, fields=["name", "color", "icon"],
+                                                    null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
-        
+
             if CourseCategory.objects.filter(name=name).exists():
                 raise CategoryNameDuplicationException("Course category name is already used.")
-            
+
             file_name = str(uuid.uuid4())
-            if icon is not None :
-                file_path = os.path.join(settings.MEDIA_ROOT, 'courses/category', file_name + '.' + icon.name.split('.')[-1])
+            if icon is not None:
+                file_path = os.path.join(settings.MEDIA_ROOT, 'courses/category',
+                                         file_name + '.' + icon.name.split('.')[-1])
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 with open(file_path, 'wb+') as destination:
                     for chunk in icon.chunks():
                         destination.write(chunk)
                 file_name = file_name + '.' + icon.name.split('.')[-1]
-            
+
             category = CourseCategory.objects.create(
                 name=name,
                 description=description,
@@ -568,15 +658,19 @@ class CourseCategoryView(APIView):
                 updated_on=today
             )
             category.save()
-            
-            return JsonResponse({"result": "success", "message": "Course category is created successfully."}, status=status.HTTP_200_OK)
-        
+
+            serializer = CourseCategorySerializer(category).data
+
+            return JsonResponse({"result": "success", "message": "Course category is created successfully.", "content": serializer},
+                                status=status.HTTP_200_OK)
+
         except (BaseClassSerializerException, ValidationException, CategoryNameDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Exception as e:
             logger.error("Error occurred while creating course category: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while creating course category."}, status=status.HTTP_400_BAD_REQUEST)
-            
+            return JsonResponse({"result": "error", "message": "Error occurred while creating course category."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
     @extend_schema(
         tags=["Course Category"],
         request=UpdateCourseCategorySerializer,
@@ -584,7 +678,7 @@ class CourseCategoryView(APIView):
     )
     def patch(self, request):
         serializer = UpdateCourseCategorySerializer(data=request.data)
-        
+
         try:
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
@@ -594,46 +688,53 @@ class CourseCategoryView(APIView):
             description = serializer.validated_data["description"]
             color = serializer.validated_data["color"]
             icon = serializer.validated_data["icon"]
-            
+
             # Value Validation
             validator = CourseCategoryDataValidator(serializer.validated_data, fields=["name", "color", "icon"])
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
             category = get_object_or_404(CourseCategory.objects, _id=_id)
-            
+
             if CourseCategory.objects.filter(~Q(_id=category._id) & Q(name=name)).exists():
                 raise CategoryNameDuplicationException("Course category name is already used.")
-            
+
             file_name = str(uuid.uuid4())
-            if icon is not None :
-                file_path = os.path.join(settings.MEDIA_ROOT, 'courses/category', file_name + '.' + icon.name.split('.')[-1])
+            if icon is not None:
+                file_path = os.path.join(settings.MEDIA_ROOT, 'courses/category',
+                                         file_name + '.' + icon.name.split('.')[-1])
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 with open(file_path, 'wb+') as destination:
                     for chunk in icon.chunks():
                         destination.write(chunk)
                 file_name = file_name + '.' + icon.name.split('.')[-1]
-            
+
+                category.icon = file_name
+
             if name:
                 category.name = name
             if description:
                 category.description = description
             if color:
                 category.color = color
-            category.icon = file_name
             category.record_time = timezone.now()
             category.save()
-            
-            return JsonResponse({"result": "success", "message": "Course category is updated successfully."}, status=status.HTTP_200_OK)
-        
+
+            serializer = CourseCategorySerializer(category).data
+
+            return JsonResponse({"result": "success", "message": "Course category is updated successfully.", "content": serializer},
+                                status=status.HTTP_200_OK)
+
         except (BaseClassSerializerException, ValidationException, CategoryNameDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Category record is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Category record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while updating course category: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while updating course category."}, status=status.HTTP_400_BAD_REQUEST)
-    
+            return JsonResponse({"result": "error", "message": "Error occurred while updating course category."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
     @extend_schema(
         tags=["Course Category"],
         parameters=[OpenApiParameter(name="_id", required=True, type=str, location=OpenApiParameter.PATH)],
@@ -644,23 +745,28 @@ class CourseCategoryView(APIView):
         try:
             if not _id:
                 raise UUIDException("Record is not found.")
-            
+
             category = get_object_or_404(CourseCategory.objects, _id=_id)
             category.delete()
-            return JsonResponse({"result": "success", "message": "Course category is deleted successfully."}, status=status.HTTP_200_OK)
+            return JsonResponse({"result": "success", "message": "Course category is deleted successfully."},
+                                status=status.HTTP_200_OK)
         except (UUIDException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Course category record not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Course category record not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while deleting course category: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while deleting course category"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while deleting course category"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
 
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class CourseView(APIView):
     """
     Class-based views for course
     """
+
     @extend_schema(
         tags=["Course"],
         responses={200: dict}
@@ -668,21 +774,24 @@ class CourseView(APIView):
     def get(self, request):
         try:
             courses = Course.objects.all().order_by("-record_time")
-            
+
             if not courses:
                 raise Http404
 
             paginator = CourseDataPagination()
             courses_list = paginator.paginate_courses(request, courses)
-            
-            return JsonResponse({"result": "success", "message": "Courses list", "content": courses_list.data}, status=status.HTTP_200_OK)
-        
+
+            return JsonResponse({"result": "success", "message": "Courses list", "content": courses_list.data},
+                                status=status.HTTP_200_OK)
+
         except Http404:
-            return JsonResponse({"result": "error", "message": "Courses is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Courses is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while fetching courses: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while fetching courses."}, status=status.HTTP_400_BAD_REQUEST)
-    
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching courses."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
     @extend_schema(
         tags=["Course"],
         request=AddCourseSerializer,
@@ -690,7 +799,7 @@ class CourseView(APIView):
     )
     def post(self, request):
         serializer = AddCourseSerializer(data=request.data)
-        
+
         try:
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
@@ -700,30 +809,34 @@ class CourseView(APIView):
             thumbnail = serializer.validated_data["thumbnail"]
             overview = serializer.validated_data["overview"]
             description = serializer.validated_data["description"]
-            objectives =  serializer.validated_data["objectives"]
+            objectives = serializer.validated_data["objectives"]
             intro = serializer.validated_data["intro"]
             level = serializer.validated_data["level"]
             certificate = serializer.validated_data["certificate"].lower()
             language = serializer.validated_data["language"].lower()
             # Value Validation
-            validator = CourseDataValidator(serializer.validated_data, fields=["title", "thumbnail", "overview", "description", "intro", "level", "certificate", "language"], empty_validation=True, null_validation=True)
+            validator = CourseDataValidator(serializer.validated_data,
+                                            fields=["title", "thumbnail", "overview", "description", "intro", "level",
+                                                    "certificate", "language"], empty_validation=True,
+                                            null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
             category = get_object_or_404(CourseCategory.objects, _id=category)
-            
+
             if Course.objects.filter(title=title).exists():
                 raise TitleDuplicationException("Course title is already used.")
-            
+
             file_name = str(uuid.uuid4())
-            if thumbnail is not None :
-                file_path = os.path.join(settings.MEDIA_ROOT, "course/thumbnail", file_name + '.' + thumbnail.name.split('.')[-1])
+            if thumbnail is not None:
+                file_path = os.path.join(settings.MEDIA_ROOT, "course/thumbnail",
+                                         file_name + '.' + thumbnail.name.split('.')[-1])
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 with open(file_path, 'wb+') as destination:
                     for chunk in thumbnail.chunks():
                         destination.write(chunk)
                 file_name = file_name + '.' + thumbnail.name.split('.')[-1]
-        
+
             course = Course.objects.create(
                 title=title,
                 category=category,
@@ -739,20 +852,25 @@ class CourseView(APIView):
                 updated_at=today
             )
             course.save()
-            
+
             # update course category
             category.assigned_course = int(category.assigned_course) + 1
             category.save()
-            
-            return JsonResponse({"result": "success", "message": "Course is added successfully."}, status=status.HTTP_200_OK)
-        
+
+            serializer = CourseSerializer(course).data
+
+            return JsonResponse({"result": "success", "message": "Course is added successfully.", "content": serializer},
+                                status=status.HTTP_200_OK)
+
         except (BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Category is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Category is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while creating course: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while creating course"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while creating course"},
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Course"],
@@ -772,7 +890,7 @@ class CourseView(APIView):
             thumbnail = serializer.validated_data["thumbnail"]
             overview = serializer.validated_data["overview"]
             description = serializer.validated_data["description"]
-            objectives =  serializer.validated_data["objectives"]
+            objectives = serializer.validated_data["objectives"]
             intro = serializer.validated_data["intro"]
             level = serializer.validated_data["level"]
             certificate = serializer.validated_data["certificate"].lower()
@@ -782,7 +900,9 @@ class CourseView(APIView):
                 raise UUIDException("Record is not found.")
 
             # Value Validation
-            validator = CourseDataValidator(serializer.validated_data, fields=["title", "thumbnail", "overview", "description", "objectives", "intro", "level", "certificate", "language"])
+            validator = CourseDataValidator(serializer.validated_data,
+                                            fields=["title", "thumbnail", "overview", "description", "objectives",
+                                                    "intro", "level", "certificate", "language"])
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -796,7 +916,8 @@ class CourseView(APIView):
 
             file_name = str(uuid.uuid4())
             if thumbnail:
-                file_path = os.path.join(settings.MEDIA_ROOT, "course/thumbnail", file_name + '.' + thumbnail.name.split('.')[-1])
+                file_path = os.path.join(settings.MEDIA_ROOT, "course/thumbnail",
+                                         file_name + '.' + thumbnail.name.split('.')[-1])
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 with open(file_path, 'wb+') as destination:
                     for chunk in thumbnail.chunks():
@@ -836,15 +957,20 @@ class CourseView(APIView):
             course.record_time = timezone.now()
             course.save()
 
-            return  JsonResponse({"result": "success", "message": "Course is updated successfully."}, status=status.HTTP_200_OK)
+            serializer = CourseSerializer(course).data
+
+            return JsonResponse({"result": "success", "message": "Course is updated successfully.", "content": serializer},
+                                status=status.HTTP_200_OK)
 
         except (UUIDException, BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Course record not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Course record not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while updating course: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while updating course"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while updating course"},
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Course"],
@@ -860,21 +986,26 @@ class CourseView(APIView):
             course = get_object_or_404(Course.objects, _id=_id)
             course.delete()
 
-            return JsonResponse({"result": "success", "message": "Course is deleted successfully."}, status=status.HTTP_200_OK)
+            return JsonResponse({"result": "success", "message": "Course is deleted successfully."},
+                                status=status.HTTP_200_OK)
 
         except UUIDException as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Course record not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Course record not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while deleting course: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while deleting course"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while deleting course"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
 
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class CourseLessonView(APIView):
     """
     Course lesson class-based view
     """
+
     @extend_schema(
         tags=["Course Lesson"],
         responses={200: dict}
@@ -889,13 +1020,16 @@ class CourseLessonView(APIView):
             paginator = CourseLessonDataPagination()
             lessons_list = paginator.paginate_course_lessons(request, lessons)
 
-            return JsonResponse({"result": "success", "message": "Course lessons list", "content": lessons_list.data}, status=status.HTTP_200_OK)
+            return JsonResponse({"result": "success", "message": "Course lessons list", "content": lessons_list.data},
+                                status=status.HTTP_200_OK)
 
         except Http404:
-            return JsonResponse({"result": "error", "message": "Course lessons is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Course lessons is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while fetching course lessons: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while fetching course lessons."}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching course lessons."},
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Course Lesson"],
@@ -916,7 +1050,9 @@ class CourseLessonView(APIView):
             video_id = serializer.validated_data["video_id"]
 
             # Value Validation
-            validator = CourseLessonDataValidator(serializer.validated_data, fields=["title", "course", "description", "thumbnail", "video_id"], null_validation=True)
+            validator = CourseLessonDataValidator(serializer.validated_data,
+                                                  fields=["title", "course", "description", "thumbnail", "video_id"],
+                                                  null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -927,9 +1063,6 @@ class CourseLessonView(APIView):
             if response.status_code == 200:
                 data = response.json()
                 duration = data.get("duration", 0)
-            duration_validation = CourseLessonDataValidator(serializer.validated_data, fields=["duration"], null_validation=True)
-            if not duration_validation.is_valid():
-                raise ValidationException(duration_validation.errors)
 
             with transaction.atomic():
                 # user = get_object_or_404(CourseCategory.objects, _id=category)
@@ -954,7 +1087,7 @@ class CourseLessonView(APIView):
 
                 course_lesson = CourseLesson.objects.create(
                     title=title.lower(),
-                    course=course,
+                    course=course_,
                     thumbnail=file_name,
                     duration=duration,
                     description=description,
@@ -970,7 +1103,9 @@ class CourseLessonView(APIView):
                 course_.save(update_fields=["lesson_count", "total_duration"])
                 course_.refresh_from_db(fields=["lesson_count", "total_duration"])
 
-                return JsonResponse({"result": "success", "message": "Course lesson is added successfully."},
+                serializer = CourseLessonSerializer(course_lesson).data
+
+                return JsonResponse({"result": "success", "message": "Course lesson is added successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
@@ -1033,7 +1168,7 @@ class CourseLessonView(APIView):
                         raise ValidationException(duration_validation.errors)
                     lesson.video_id = video_id
 
-                pre_course = get_object_or_404(Course.objects, _id=lesson.course)
+                pre_course = get_object_or_404(Course.objects, _id=lesson.course._id)
                 if course:
                     new_course = get_object_or_404(Course.objects, _id=course)
 
@@ -1047,7 +1182,8 @@ class CourseLessonView(APIView):
                     new_course.save(update_fields=["lesson_count", "total_duration"])
 
                     # Assign new course
-                    lesson.course = course
+                    course_object = get_object_or_404(Course.objects, _id=course)
+                    lesson.course = course_object
 
                 # Upload thumbnail
                 file_name = str(uuid.uuid4())
@@ -1068,15 +1204,20 @@ class CourseLessonView(APIView):
                     lesson.description = description
                 lesson.save()
 
-                return  JsonResponse({"result": "success", "message": "Course lesson is updated successfully."}, status=status.HTTP_200_OK)
+                serializer = CourseLessonSerializer(lesson).data
+
+                return JsonResponse({"result": "success", "message": "Course lesson is updated successfully.", "content": serializer},
+                                    status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Record is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while updating course lesson: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while updating course lesson"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while updating course lesson"},
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Course Lesson"],
@@ -1105,11 +1246,13 @@ class CourseLessonView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting course lesson"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class CourseReviewView(APIView):
     """
     Course review class-based view
     """
+
     @extend_schema(
         tags=["Course Review"],
         responses={200: dict}
@@ -1124,13 +1267,16 @@ class CourseReviewView(APIView):
             paginator = CourseReviewDataPagination()
             courses_list = paginator.paginate_course_reviews(request, course_reviews)
 
-            return JsonResponse({"result": "success", "message": "Course reviews list", "content": courses_list.data}, status=status.HTTP_200_OK)
+            return JsonResponse({"result": "success", "message": "Course reviews list", "content": courses_list.data},
+                                status=status.HTTP_200_OK)
 
         except Http404:
-            return JsonResponse({"result": "error", "message": "Course review is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Course review is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while fetching course reviews: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while fetching course reviews."}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching course reviews."},
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Course Review"],
@@ -1150,7 +1296,8 @@ class CourseReviewView(APIView):
             review = serializer.validated_data["review"]
 
             # Value Validation
-            validator = CourseReviewDataValidator(serializer.validated_data, fields=["user", "course", "rate", "review"], null_validation=True)
+            validator = CourseReviewDataValidator(serializer.validated_data,
+                                                  fields=["user", "course", "rate", "review"], null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -1169,15 +1316,18 @@ class CourseReviewView(APIView):
             )
             course_review.save()
 
-            return JsonResponse({"result": "success", "message": "Course review is added successfully."}, status=status.HTTP_200_OK)
+            return JsonResponse({"result": "success", "message": "Course review is added successfully."},
+                                status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Record is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while creating course review: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while creating course review"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while creating course review"},
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Course Review"],
@@ -1201,7 +1351,8 @@ class CourseReviewView(APIView):
                 raise UUIDException("Record is not found.")
 
             # Value Validation
-            validator = CourseReviewDataValidator(serializer.validated_data, fields=["user", "course", "rate", "review"])
+            validator = CourseReviewDataValidator(serializer.validated_data,
+                                                  fields=["user", "course", "rate", "review"])
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -1222,15 +1373,18 @@ class CourseReviewView(APIView):
             course_review.record_time = timezone.now()
             course_review.save()
 
-            return  JsonResponse({"result": "success", "message": "Course review is updated successfully."}, status=status.HTTP_200_OK)
+            return JsonResponse({"result": "success", "message": "Course review is updated successfully."},
+                                status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException, ValidationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Record is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while updating course review: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while updating course review"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while updating course review"},
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Course Review"],
@@ -1246,20 +1400,24 @@ class CourseReviewView(APIView):
             course_review = get_object_or_404(CourseReview.objects, _id=_id)
             course_review.delete()
 
-            return JsonResponse({"result": "success", "message": "Course review is deleted successfully."}, status=status.HTTP_200_OK)
+            return JsonResponse({"result": "success", "message": "Course review is deleted successfully."},
+                                status=status.HTTP_200_OK)
 
         except UUIDException as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Course review record not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Course review record not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while deleting course review: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while deleting course review"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"result": "error", "message": "Error occurred while deleting course review"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
 
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class MealPlanView(APIView):
     """
-    Meal plan class based view
+    Meal plan class-based view
     """
 
     @extend_schema(
@@ -1308,8 +1466,9 @@ class MealPlanView(APIView):
 
             # Value Validation
             validator = MealPlanDataValidator(serializer.validated_data,
-                                                  fields=["name", "overview", "description", "thumbnail", "course", "intro"],
-                                                  null_validation=True)
+                                              fields=["name", "overview", "description", "thumbnail", "course",
+                                                      "intro"],
+                                              null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -1337,14 +1496,16 @@ class MealPlanView(APIView):
                     overview=overview,
                     description=description,
                     thumbnail=file_name,
-                    course=course,
+                    course=course_,
                     intro=intro,
                     created_at=today,
                     updated_at=today
                 )
                 meal.save()
 
-                return JsonResponse({"result": "success", "message": "Meal plan is added successfully."},
+                serializer = MealPlanSerializer(meal).data
+
+                return JsonResponse({"result": "success", "message": "Meal plan is added successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
@@ -1382,7 +1543,8 @@ class MealPlanView(APIView):
 
             # Value Validation
             validator = MealPlanDataValidator(serializer.validated_data,
-                                              fields=["name", "overview", "description", "thumbnail", "course", "intro"])
+                                              fields=["name", "overview", "description", "thumbnail", "course",
+                                                      "intro"])
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -1413,22 +1575,26 @@ class MealPlanView(APIView):
                 if description:
                     meal.description = description
                 if course:
-                    meal.course = course
+                    course_object = get_object_or_404(Course.objects, _id=course)
+                    meal.course = course_object
                 if intro:
                     meal.intro = intro
                 meal.save()
 
-                return JsonResponse({"result": "success", "message": "Meal plan is updated successfully."},
+                serializer = MealPlanSerializer(meal).data
+
+                return JsonResponse({"result": "success", "message": "Meal plan is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Record is not found."}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("Error occurred while updating meal plan: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while updating meal plan"},
-                            status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Meal Plan"],
@@ -1457,10 +1623,11 @@ class MealPlanView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting meal plan"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class MealPlanRecipeView(APIView):
     """
-    Meal plan recipe class based view
+    Meal plan recipe class-based view
     """
 
     @extend_schema(
@@ -1477,8 +1644,9 @@ class MealPlanRecipeView(APIView):
             paginator = MealPlanRecipeDataPagination()
             recipes_list = paginator.paginate_meal_recipe(request, recipes)
 
-            return JsonResponse({"result": "success", "message": "Meal plan recipes list", "content": recipes_list.data},
-                                status=status.HTTP_200_OK)
+            return JsonResponse(
+                {"result": "success", "message": "Meal plan recipes list", "content": recipes_list.data},
+                status=status.HTTP_200_OK)
 
         except Http404:
             return JsonResponse({"result": "error", "message": "Meal plan recipes are not found."},
@@ -1508,22 +1676,18 @@ class MealPlanRecipeView(APIView):
 
             # Value Validation
             validator = MealPlanRecipeValidator(serializer.validated_data,
-                                              fields=["name", "plan", "description", "thumbnail", "video"],
-                                              null_validation=True)
+                                                fields=["name", "plan", "description", "thumbnail", "video"],
+                                                null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
-            # Get duration of the video
+            # Get the duration of the video
             oembed_url = f"https://vimeo.com/api/oembed.json?url=https://player.vimeo.com/video/{video}"
             response = requests.get(oembed_url)
             duration = 0
             if response.status_code == 200:
                 data = response.json()
                 duration = data.get("duration", 0)
-            duration_validation = MealPlanRecipeValidator(serializer.validated_data, fields=["duration"],
-                                                            null_validation=True)
-            if not duration_validation.is_valid():
-                raise ValidationException(duration_validation.errors)
 
             with transaction.atomic():
                 if MealPlanRecipe.objects.filter(name=name.lower()).exists():
@@ -1546,7 +1710,7 @@ class MealPlanRecipeView(APIView):
 
                 recipe = MealPlanRecipe.objects.create(
                     name=name.lower(),
-                    meal=plan,
+                    meal=meal,
                     thumbnail=file_name,
                     duration=duration,
                     description=description,
@@ -1561,7 +1725,9 @@ class MealPlanRecipeView(APIView):
                 meal.save(update_fields=["recipe_count"])
                 meal.refresh_from_db(fields=["recipe_count"])
 
-                return JsonResponse({"result": "success", "message": "Meal plan recipe is added successfully."},
+                serializer = MealPlanRecipeSerializer(recipe).data
+
+                return JsonResponse({"result": "success", "message": "Meal plan recipe is added successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
@@ -1598,7 +1764,7 @@ class MealPlanRecipeView(APIView):
 
             # Value Validation
             validator = MealPlanRecipeValidator(serializer.validated_data,
-                                              fields=["name", "plan", "description", "thumbnail", "video"])
+                                                fields=["name", "plan", "description", "thumbnail", "video"])
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -1612,19 +1778,17 @@ class MealPlanRecipeView(APIView):
 
                 duration = int(recipe.duration)
                 if video:
-                    # Get duration of the video
+                    # Get the duration of the video
                     oembed_url = f"https://vimeo.com/api/oembed.json?url=https://player.vimeo.com/video/{video}"
                     response = requests.get(oembed_url)
                     if response.status_code == 200:
                         data = response.json()
                         duration = data.get("duration", 0)
-                    duration_validation = MealPlanRecipeValidator(serializer.validated_data, fields=["duration"],
-                                                                    null_validation=True)
-                    if not duration_validation.is_valid():
-                        raise ValidationException(duration_validation.errors)
+
+                    recipe.duration = duration
                     recipe.video_id = video
 
-                pre_meal = get_object_or_404(MealPlan.objects, _id=recipe.meal)
+                pre_meal = get_object_or_404(MealPlan.objects, _id=recipe.meal._id)
                 if plan:
                     new_meal = get_object_or_404(MealPlan.objects, _id=plan)
 
@@ -1634,7 +1798,7 @@ class MealPlanRecipeView(APIView):
                     new_meal.recipe_count = F("recipe_count") + 1
                     new_meal.save(update_fields=["lesson_count"])
 
-                    recipe.meal = plan
+                    recipe.meal = new_meal
 
                 # Upload thumbnail
                 file_name = str(uuid.uuid4())
@@ -1648,14 +1812,15 @@ class MealPlanRecipeView(APIView):
                     file_name = file_name + '.' + thumbnail.name.split('.')[-1]
                     recipe.thumbnail = file_name
 
-                recipe.duration = duration
                 if name:
                     recipe.name = name.lower()
                 if description:
                     recipe.description = description
                 recipe.save()
 
-                return JsonResponse({"result": "success", "message": "Meal plan recipe is updated successfully."},
+                serializer = MealPlanRecipeSerializer(recipe).data
+
+                return JsonResponse({"result": "success", "message": "Meal plan recipe is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException) as e:
@@ -1695,11 +1860,13 @@ class MealPlanRecipeView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting meal recipe"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class AudiobookCategoryView(APIView):
     """
-    Audiobook class based view
+    Audiobook-class-based view
     """
+
     @extend_schema(
         tags=["Audiobook Category"],
         responses={200: dict}
@@ -1745,8 +1912,8 @@ class AudiobookCategoryView(APIView):
 
             # Value Validation
             validator = AudiobookCategoryValidator(serializer.validated_data,
-                                                fields=["name", "description", "color", "icon"],
-                                                null_validation=True)
+                                                   fields=["name", "description", "color", "icon"],
+                                                   null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -1775,7 +1942,9 @@ class AudiobookCategoryView(APIView):
                 )
                 audiobook_category.save()
 
-                return JsonResponse({"result": "success", "message": "Audiobook category is added successfully."},
+                serializer = AudiobookCategorySerializer(audiobook_category).data
+
+                return JsonResponse({"result": "success", "message": "Audiobook category is added successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
@@ -1843,7 +2012,9 @@ class AudiobookCategoryView(APIView):
                     category.color = color
                 category.save()
 
-                return JsonResponse({"result": "success", "message": "Audiobook category is updated successfully."},
+                serializer = AudiobookCategorySerializer(category).data
+
+                return JsonResponse({"result": "success", "message": "Audiobook category is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException) as e:
@@ -1883,11 +2054,13 @@ class AudiobookCategoryView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting audiobook category"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class AudiobookView(APIView):
     """
-    Audiobook class based view
+    Audiobook-class-based view
     """
+
     @extend_schema(
         tags=["Audiobook"],
         responses={200: dict}
@@ -1935,8 +2108,9 @@ class AudiobookView(APIView):
 
             # Value Validation
             validator = AudiobookValidator(serializer.validated_data,
-                                                fields=["title", "overview", "description", "thumbnail", "category", "audio"],
-                                                null_validation=True)
+                                           fields=["title", "overview", "description", "thumbnail", "category",
+                                                   "audio"],
+                                           null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -1960,50 +2134,57 @@ class AudiobookView(APIView):
                     file_name = file_name + '.' + thumbnail.name.split('.')[-1]
 
                 #upload audio file
-                file_name_audio = str(uuid.uuid4())
-                file_name_sliced_audio = str(uuid.uuid4())
+                audio_file_name = None
+                sliced_audio_file_name = None
                 duration = 0
                 if audio is not None:
-                    # Save original audio file
                     file_ext = audio.name.split('.')[-1]
-                    file_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-audio", f"{file_name_audio}.{file_ext}")
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                    audio_file_name = f"{uuid.uuid4()}.{file_ext}"
+                    audio_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-audio", audio_file_name)
+                    os.makedirs(os.path.dirname(audio_path), exist_ok=True)
 
-                    with open(file_path, 'wb+') as destination:
+                    with open(audio_path, 'wb+') as destination:
                         for chunk in audio.chunks():
                             destination.write(chunk)
 
-                    file_name_audio += f".{file_ext}"
-                    # Get audio duration
+                    # Extract audio duration
                     if file_ext == 'mp3':
-                        _audio = MP3(file_path)
+                        _audio = MP3(audio_path)
                         duration = round(_audio.info.length)
                     elif file_ext == 'wav':
-                        _audio = WAVE(file_path)
+                        _audio = WAVE(audio_path)
                         duration = round(_audio.info.length)
 
-                    # Slice the audio using pydub (from 50s to 90s)
-                    slice_audio_file_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-sliced-audio",
-                                                         f"{file_name_sliced_audio}.{file_ext}")
-                    os.makedirs(os.path.dirname(slice_audio_file_path), exist_ok=True)
+                    # Slice the audio
+                    sliced_audio_file_name = f"{uuid.uuid4()}.{file_ext}"
+                    sliced_audio_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-sliced-audio",
+                                                     sliced_audio_file_name)
+                    os.makedirs(os.path.dirname(sliced_audio_path), exist_ok=True)
 
-                    # audio_segment = AudioSegment.from_file(file_path)  # Load the audio
-                    # start_ms = 50_000
-                    # if len(audio_segment) >= start_ms:
-                    #     sliced_audio = audio_segment[50_000:80_000]
-                    #     sliced_audio.export(slice_audio_file_path, format=file_ext)
-                    # else:
-                    #     raise ValueErrorException("Audio file is too short for the specified slicing range.")
+                    audio_segment = AudioSegment.from_file(audio_path)
+                    audio_length_ms = len(audio_segment)
+                    min_length_ms = 30 * 1000  # 30 seconds
+                    max_length_ms = 2 * 60 * 1000  # 2 minutes
 
-                    file_name_sliced_audio += f".{file_ext}"
+                    start_ms = int(audio_length_ms * 0.10)
+                    end_ms = int(audio_length_ms * 0.20)
+
+                    slice_length_ms = end_ms - start_ms
+                    if slice_length_ms < min_length_ms:
+                        end_ms = min(start_ms + min_length_ms, audio_length_ms)
+                    elif slice_length_ms > max_length_ms:
+                        end_ms = start_ms + max_length_ms
+
+                    sliced_audio = audio_segment[start_ms:end_ms]
+                    sliced_audio.export(sliced_audio_path, format=file_ext)
 
                 audio_book = Audiobook.objects.create(
                     title=title.lower(),
-                    category=category,
+                    category=audiobook_category,
                     overview=overview,
                     description=description,
-                    audio=file_name_audio,
-                    sliced_audio=file_name_sliced_audio,
+                    audio=audio_file_name,
+                    sliced_audio=sliced_audio_file_name,
                     duration=duration,
                     thumbnail=file_name,
                     created_at=today,
@@ -2016,7 +2197,9 @@ class AudiobookView(APIView):
                 audiobook_category.save(update_fields=["assigned_audio"])
                 audiobook_category.refresh_from_db(fields=["assigned_audio"])
 
-                return JsonResponse({"result": "success", "message": "Audiobook is added successfully."},
+                serializer = AudiobookSerializer(audio_book).data
+
+                return JsonResponse({"result": "success", "message": "Audiobook is added successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
@@ -2054,7 +2237,8 @@ class AudiobookView(APIView):
 
             # Value Validation
             validator = AudiobookValidator(serializer.validated_data,
-                                                fields=["title", "overview", "description", "thumbnail", "category", "audio"])
+                                           fields=["title", "overview", "description", "thumbnail", "category",
+                                                   "audio"])
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -2078,43 +2262,53 @@ class AudiobookView(APIView):
                     file_name = file_name + '.' + thumbnail.name.split('.')[-1]
                     audio_book.thumbnail = file_name
 
-                # Upload audio file
+                # upload audio file
                 if audio is not None:
-                    file_name_audio = str(uuid.uuid4())
-                    duration = 0
                     file_ext = audio.name.split('.')[-1]
-                    file_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-audio", f"{file_name_audio}.{file_ext}")
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                    # Save the uploaded audio file
-                    with open(file_path, 'wb+') as destination:
+                    audio_file_name = f"{uuid.uuid4()}.{file_ext}"
+                    audio_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-audio", audio_file_name)
+                    os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+
+                    with open(audio_path, 'wb+') as destination:
                         for chunk in audio.chunks():
                             destination.write(chunk)
-                    file_name_audio += f".{file_ext}"
 
+                    # Extract audio duration
                     if file_ext == 'mp3':
-                        _audio = MP3(file_path)
+                        _audio = MP3(audio_path)
                         duration = round(_audio.info.length)
                     elif file_ext == 'wav':
-                        _audio = WAVE(file_path)
+                        _audio = WAVE(audio_path)
                         duration = round(_audio.info.length)
-                    # audio_segment = AudioSegment.from_file(file_path)
-                    file_name_sliced_audio = str(uuid.uuid4()) + f".{file_ext}"
-                    slice_audio_file_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-sliced-audio",
-                                                         file_name_sliced_audio)
-                    os.makedirs(os.path.dirname(slice_audio_file_path), exist_ok=True)
 
-                    # start_ms = 50_000
-                    # if len(audio_segment) >= start_ms:
-                    #     sliced_audio = audio_segment[50_000:80_000]
-                    #     sliced_audio.export(slice_audio_file_path, format=file_ext)
-                    # else:
-                    #     raise ValueErrorException("Audio file is too short for the specified slicing range.")
+                    # Slice the audio
+                    sliced_audio_file_name = f"{uuid.uuid4()}.{file_ext}"
+                    sliced_audio_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-sliced-audio",
+                                                     sliced_audio_file_name)
+                    os.makedirs(os.path.dirname(sliced_audio_path), exist_ok=True)
+
+                    audio_segment = AudioSegment.from_file(audio_path)
+                    audio_length_ms = len(audio_segment)
+                    min_length_ms = 30 * 1000  # 30 seconds
+                    max_length_ms = 2 * 60 * 1000  # 2 minutes
+
+                    start_ms = int(audio_length_ms * 0.10)
+                    end_ms = int(audio_length_ms * 0.20)
+
+                    slice_length_ms = end_ms - start_ms
+                    if slice_length_ms < min_length_ms:
+                        end_ms = min(start_ms + min_length_ms, audio_length_ms)
+                    elif slice_length_ms > max_length_ms:
+                        end_ms = start_ms + max_length_ms
+
+                    sliced_audio = audio_segment[start_ms:end_ms]
+                    sliced_audio.export(sliced_audio_path, format=file_ext)
 
                     audio_book.duration = duration
-                    audio_book.audio = file_name_audio
-                    audio_book.sliced_audio = file_name_sliced_audio
+                    audio_book.audio = audio_file_name
+                    audio_book.sliced_audio = sliced_audio_file_name
 
-                pre_category = get_object_or_404(AudiobookCategory.objects, _id=audio_book.category)
+                pre_category = get_object_or_404(AudiobookCategory.objects, _id=audio_book.category._id)
                 if category:
                     new_category = get_object_or_404(AudiobookCategory.objects, _id=category)
 
@@ -2124,7 +2318,7 @@ class AudiobookView(APIView):
                     new_category.assigned_audio = F("assigned_audio") + 1
                     new_category.save(update_fields=["assigned_audio"])
 
-                    audio_book.category = category
+                    audio_book.category = new_category
 
                 if title != '':
                     audio_book.title = title.lower()
@@ -2134,10 +2328,13 @@ class AudiobookView(APIView):
                     audio_book.description = description
                 audio_book.save()
 
-                return JsonResponse({"result": "success", "message": "Audiobook is updated successfully."},
+                serializer = AudiobookSerializer(audio_book).data
+
+                return JsonResponse({"result": "success", "message": "Audiobook is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
-        except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException, ValueErrorException) as e:
+        except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException,
+                ValueErrorException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
             return JsonResponse({"result": "error", "message": "Record is not found."},
@@ -2174,11 +2371,13 @@ class AudiobookView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting Audiobook"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class ItemCategoryView(APIView):
     """
-    E-commerce item category class based view
+    E-commerce item category class-based view
     """
+
     @extend_schema(
         tags=["Item Category"],
         responses={200: dict}
@@ -2219,14 +2418,14 @@ class ItemCategoryView(APIView):
 
             name = serializer.validated_data["name"]
             description = serializer.validated_data["description"]
-            measurement = serializer.validated_data["category-measurement"]
+            measurement = serializer.validated_data["measurement"] # free => f, size => s, kilogram => kg, Liter => l
             color = serializer.validated_data["color"]
             icon = serializer.validated_data["icon"]
 
             # Value Validation
             validator = ItemCategoryValidator(serializer.validated_data,
-                                                   fields=["name", "description", "measurement", "color", "icon"],
-                                                   null_validation=True)
+                                              fields=["name", "description", "measurement", "color", "icon"],
+                                              null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -2256,7 +2455,9 @@ class ItemCategoryView(APIView):
                 )
                 item_category.save()
 
-                return JsonResponse({"result": "success", "message": "Item category is added successfully."},
+                serializer = ItemCategorySerializer(item_category).data
+
+                return JsonResponse({"result": "success", "message": "Item category is added successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
@@ -2284,7 +2485,7 @@ class ItemCategoryView(APIView):
             _id = serializer.validated_data["_id"]
             name = serializer.validated_data["name"]
             description = serializer.validated_data["description"]
-            measurement = serializer.validated_data["edit-category-measurement"]
+            measurement = serializer.validated_data["measurement"]
             color = serializer.validated_data["color"]
             icon = serializer.validated_data["icon"]
 
@@ -2293,7 +2494,7 @@ class ItemCategoryView(APIView):
 
             # Value Validation
             validator = ItemCategoryValidator(serializer.validated_data,
-                                                   fields=["name", "description", "measurement", "color", "icon"])
+                                              fields=["name", "description", "measurement", "color", "icon"])
 
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
@@ -2328,7 +2529,9 @@ class ItemCategoryView(APIView):
                     item_category.color = color
                 item_category.save()
 
-                return JsonResponse({"result": "success", "message": "Item category is updated successfully."},
+                serializer = ItemCategorySerializer(item_category).data
+
+                return JsonResponse({"result": "success", "message": "Item category is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException) as e:
@@ -2368,11 +2571,13 @@ class ItemCategoryView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting item category"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class ItemView(APIView):
     """
-    E-commerce item class based view
+    E-commerce item class-based view
     """
+
     @extend_schema(
         tags=["Item"],
         responses={200: dict}
@@ -2400,7 +2605,7 @@ class ItemView(APIView):
                                 status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
-        tags=["Item Category"],
+        tags=["Item"],
         request=AddItemSerializer,
         responses={200: dict}
     )
@@ -2416,19 +2621,24 @@ class ItemView(APIView):
             description = serializer.validated_data["description"]
             thumbnail = serializer.validated_data["thumbnail"]
             category = serializer.validated_data["category"]
-            min_value = serializer.validated_data["min-value"]
-            max_value = serializer.validated_data["max-value"]
-            sizes = serializer.validated_data["size-selection"]
+            # These values are for if the category measurement is kg or l
+            min_value = serializer.validated_data.get('min-value', 0)
+            max_value = serializer.validated_data.get('max-value', 0)
+            # It can be a Kilogram(kg), Liter(l), Size(s) or Free(f)
+            sizes = serializer.validated_data.get('sizes', '-')
             price = serializer.validated_data["price"]
+            # These are the variations => Image, Color and Quantity
             variation_img = serializer.validated_data["variation_img"]
             variation_color = serializer.validated_data["variation_color"]
             variation_qty = serializer.validated_data["variation_qty"]
 
             # Value Validation
             validator = ItemValidator(serializer.validated_data,
-                                              fields=["name", "overview", "description", "thumbnail", "category", "min-value", "max-value",
-                                                      "size-selection", "price", "variation_img", "variation_color", "variation_qty"],
-                                                    null_validation=True)
+                                      fields=["name", "overview", "description", "thumbnail", "category", "min-value",
+                                              "max-value",
+                                              "size", "price", "variation_img", "variation_color",
+                                              "variation_qty"],
+                                      null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -2440,37 +2650,32 @@ class ItemView(APIView):
                 if not item_category:
                     raise Http404("Item category is not found.")
 
-                # Upload thumbnail
-                file_name = str(uuid.uuid4())
+                # Save thumbnail
+                thumbnail_file_name = None
                 if thumbnail is not None:
-                    file_path = os.path.join(settings.MEDIA_ROOT, "item/item-thumbnail",
-                                             file_name + '.' + thumbnail.name.split('.')[-1])
+                    thumbnail_file_name = str(uuid.uuid4()) + '.' + thumbnail.name.split('.')[-1]
+                    file_path = os.path.join(settings.MEDIA_ROOT, "item/item-thumbnail", thumbnail_file_name)
                     os.makedirs(os.path.dirname(file_path), exist_ok=True)
                     with open(file_path, 'wb+') as destination:
                         for chunk in thumbnail.chunks():
                             destination.write(chunk)
-                    file_name = file_name + '.' + thumbnail.name.split('.')[-1]
 
                 # handle the variations
                 variation_img_file_names = []
                 variation_color_codes = []
                 variation_qty_count = []
-                if variation_img is not None or len(variation_img) > 0:
-                    for img in variation_img:
-                        file_name = str(uuid.uuid4())
-                        file_path = os.path.join(settings.MEDIA_ROOT, "item/ecommerce-variation",
-                                                 file_name + '.' + img.name.split('.')[-1])
+
+                if variation_img is not None and len(variation_img) > 0:
+                    for idx, img in enumerate(variation_img):
+                        var_file_name = str(uuid.uuid4()) + '.' + img.name.split('.')[-1]
+                        file_path = os.path.join(settings.MEDIA_ROOT, "item/ecommerce-variation", var_file_name)
                         os.makedirs(os.path.dirname(file_path), exist_ok=True)
                         with open(file_path, 'wb+') as destination:
                             for chunk in img.chunks():
                                 destination.write(chunk)
-                        file_name = file_name + '.' + img.name.split('.')[-1]
-                        variation_img_file_names.append(file_name)
-                        # append respective color values
-                        index = variation_img.index(img)
-                        variation_color_codes.append(variation_color[index])
-                        # append corresponding quality values
-                        variation_qty_count.append(variation_qty[index])
+                        variation_img_file_names.append(var_file_name)
+                        variation_color_codes.append(variation_color[idx])
+                        variation_qty_count.append(variation_qty[idx])
 
                 # calculate total quantity
                 total_quantity = 0
@@ -2478,16 +2683,16 @@ class ItemView(APIView):
 
                 item = Item.objects.create(
                     name=name.lower(),
-                    category=category,
+                    category=item_category,
                     min_value=min_value,
                     max_value=max_value,
                     sizes=sizes,
-                    thumbnail=file_name,
+                    thumbnail=thumbnail_file_name,
                     overview=overview,
                     description=description,
-                    variation_img=variation_img,
-                    variation_color=variation_color,
-                    variation_qty=variation_qty,
+                    variation_img=variation_img_file_names,
+                    variation_color=variation_color_codes,
+                    variation_qty=variation_qty_count,
                     price=price,
                     quantity=total_quantity,
                     created_at=today,
@@ -2500,7 +2705,9 @@ class ItemView(APIView):
                 item_category.save(update_fields=["item_count"])
                 item_category.refresh_from_db(fields=["item_count"])
 
-                return JsonResponse({"result": "success", "message": "Item is added successfully."},
+                serializer = ItemSerializer(item).data
+
+                return JsonResponse({"result": "success", "message": "Item is added successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
@@ -2526,28 +2733,32 @@ class ItemView(APIView):
                 raise BaseClassSerializerException(serializer.errors)
 
             _id = serializer.validated_data["_id"]
-            name = serializer.validated_data["name"]
-            overview = serializer.validated_data["overview"]
-            description = serializer.validated_data["description"]
-            thumbnail = serializer.validated_data["thumbnail"]
-            category = serializer.validated_data["category"]
-            min_value = serializer.validated_data["min-value"]
-            max_value = serializer.validated_data["max-value"]
-            sizes = serializer.validated_data["size-selection"]
-            price = serializer.validated_data["price"]
-            variation_img = serializer.validated_data["variation_img"]
-            variation_color = serializer.validated_data["variation_color"]
-            variation_qty = serializer.validated_data["variation_qty"]
+            name = serializer.validated_data.get("name")
+            overview = serializer.validated_data.get("overview")
+            description = serializer.validated_data.get("description")
+            thumbnail = serializer.validated_data.get("thumbnail")
+            category = serializer.validated_data.get("category")
+            min_value = serializer.validated_data.get("min_value")
+            max_value = serializer.validated_data.get("max_value")
+            sizes = serializer.validated_data.get("sizes")
+            price = serializer.validated_data.get("price")
+            variation_img = serializer.validated_data.get("variation_img", [])
+            variation_color = serializer.validated_data.get("variation_color", [])
+            variation_qty = serializer.validated_data.get("variation_qty", [])
 
             if not _id:
-                raise UUIDException("Record is not found.")
+                raise UUIDException("Record ID is required.")
 
             # Value Validation
-            validator = ItemValidator(serializer.validated_data,
-                                      fields=["name", "overview", "description", "thumbnail", "category", "min-value",
-                                              "max-value", "size-selection", "price", "variation_img", "variation_color",
-                                              "variation_qty"])
-
+            validator = ItemValidator(
+                serializer.validated_data,
+                fields=[
+                    "name", "overview", "description", "thumbnail", "category",
+                    "min_value", "max_value", "sizes", "price", "variation_img",
+                    "variation_color", "variation_qty"
+                ],
+                null_validation=False
+            )
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -2556,89 +2767,97 @@ class ItemView(APIView):
                 if not item:
                     raise Http404("Item is not found.")
 
-                if Item.objects.filter(Q(name=name.lower()) & ~Q(_id=_id)).exists():
+                if name and Item.objects.filter(Q(name=name.lower()) & ~Q(_id=_id)).exists():
                     raise TitleDuplicationException("Item name is already used.")
 
                 # Upload thumbnail
-                file_name = str(uuid.uuid4())
-                if thumbnail is not None:
-                    file_path = os.path.join(settings.MEDIA_ROOT, "item/item-thumbnail",
-                                             file_name + '.' + thumbnail.name.split('.')[-1])
+                if thumbnail:
+                    file_name = f"{uuid.uuid4()}.{thumbnail.name.split('.')[-1]}"
+                    file_path = os.path.join(settings.MEDIA_ROOT, "item/item-thumbnail", file_name)
                     os.makedirs(os.path.dirname(file_path), exist_ok=True)
                     with open(file_path, 'wb+') as destination:
                         for chunk in thumbnail.chunks():
                             destination.write(chunk)
-                    file_name = file_name + '.' + thumbnail.name.split('.')[-1]
                     item.thumbnail = file_name
 
-                # handle the variations
+                # Handle variations
                 variation_img_file_names = []
                 variation_color_codes = []
                 variation_qty_count = []
-                if variation_img is not None or len(variation_img) > 0:
-                    for img in variation_img:
-                        file_name = str(uuid.uuid4())
-                        file_path = os.path.join(settings.MEDIA_ROOT, "item/ecommerce-variation",
-                                                 file_name + '.' + img.name.split('.')[-1])
+
+                if variation_img:
+                    for idx, img in enumerate(variation_img):
+                        file_name = f"{uuid.uuid4()}.{img.name.split('.')[-1]}"
+                        file_path = os.path.join(settings.MEDIA_ROOT, "item/ecommerce-variation", file_name)
                         os.makedirs(os.path.dirname(file_path), exist_ok=True)
                         with open(file_path, 'wb+') as destination:
                             for chunk in img.chunks():
                                 destination.write(chunk)
-                        file_name = file_name + '.' + img.name.split('.')[-1]
                         variation_img_file_names.append(file_name)
-                        # append respective color values
-                        index = variation_img.index(img)
-                        variation_color_codes.append(variation_color[index])
-                        # append corresponding quality values
-                        variation_qty_count.append(variation_qty[index])
-                item.variation_img = variation_img_file_names
-                item.variation_color = variation_color_codes
-                item.variation_qty = variation_qty_count
+                        variation_color_codes.append(variation_color[idx])
+                        variation_qty_count.append(variation_qty[idx])
 
-                total_quantity = 0
-                total_quantity += sum(map(int, variation_qty_count))
-                item.quantity = total_quantity
+                    item.variation_img = variation_img_file_names
+                    item.variation_color = variation_color_codes
+                    item.variation_qty = variation_qty_count
 
-                pre_category = get_object_or_404(ItemCategory.objects, _id=item.category)
+                    # Calculate total quantity
+                    total_quantity = 0
+                    total_quantity += sum(map(int, variation_qty_count))
+                    item.quantity = total_quantity
+
+                # Update category
                 if category:
-                    new_category = get_object_or_404(ItemCategory.objects, _id=category)
+                    pre_category = ItemCategory.objects.get(_id=item.category._id)
+                    new_category = ItemCategory.objects.get(_id=category)
 
-                    pre_category.assigned_audio = F("item_count") - 1
+                    pre_category.item_count = F("item_count") - 1
                     pre_category.save(update_fields=["item_count"])
 
-                    new_category.assigned_audio = F("item_count") + 1
+                    new_category.item_count = F("item_count") + 1
                     new_category.save(update_fields=["item_count"])
 
-                    item.category = category
+                    item.category = new_category
 
-                if name != '':
+                # Update fields if provided
+                if name:
                     item.name = name.lower()
-                if overview != '':
+                if overview:
                     item.overview = overview
-                if description != '':
+                if description:
                     item.description = description
-                if min_value:
+                if min_value is not None:
                     item.min_value = min_value
-                if max_value:
+                if max_value is not None:
                     item.max_value = max_value
-                if sizes and len(sizes) != 0:
+                if sizes is not None:
                     item.sizes = sizes
-                if price:
+                if price is not None:
                     item.price = price
+
                 item.save()
 
-                return JsonResponse({"result": "success", "message": "Item is updated successfully."},
-                                    status=status.HTTP_200_OK)
+                serializer = ItemSerializer(item).data
+
+                return JsonResponse(
+                    {
+                        "result": "success",
+                        "message": "Item is updated successfully.",
+                        "content": serializer
+                    },
+                    status=status.HTTP_200_OK
+                )
 
         except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException) as e:
-            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+            return JsonResponse({"result": "error", "message": str(e)}, status=e.code)
         except Http404:
-            return JsonResponse({"result": "error", "message": "Item is not found."},
-                                status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"result": "error", "message": "Item is not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            logger.error("Error occurred while updating item: %s", e)
-            return JsonResponse({"result": "error", "message": "Error occurred while updating item"},
-                                status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Error occurred while updating item: {str(e)}")
+            return JsonResponse(
+                {"result": "error", "message": "Error occurred while updating item"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @extend_schema(
         tags=["Item"],
@@ -2667,10 +2886,11 @@ class ItemView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting item"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class ItemCartView(APIView):
     """
-    Cart class based view
+    Cart class-based view
     """
 
     @extend_schema(
@@ -2699,10 +2919,11 @@ class ItemCartView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while fetching carts."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class ItemWishlistView(APIView):
     """
-    Wishlist class based view
+    Wishlist-class-based view
     """
 
     @extend_schema(
@@ -2731,10 +2952,11 @@ class ItemWishlistView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while fetching wishlist."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class PaymentMethodView(APIView):
     """
-    Package Plan class based view
+    Package Plan class-based view
     """
 
     @extend_schema(
@@ -2782,8 +3004,8 @@ class PaymentMethodView(APIView):
 
             # Value Validation
             validator = PaymentMethodValidator(serializer.validated_data,
-                                              fields=["name", "icon", "holder", "num"],
-                                              null_validation=True)
+                                               fields=["name", "icon", "holder", "num"],
+                                               null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -2813,10 +3035,13 @@ class PaymentMethodView(APIView):
                 )
                 payment_method.save()
 
-                return JsonResponse({"result": "success", "message": "Payment method is added successfully."},
+                serializer = PaymentMethodSerializer(payment_method).data
+
+                return JsonResponse({"result": "success", "message": "Payment method is added successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
-        except (BaseClassSerializerException, ValidationException, TitleDuplicationException, ValueDuplicationException) as e:
+        except (BaseClassSerializerException, ValidationException, TitleDuplicationException,
+                ValueDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
             return JsonResponse({"result": "error", "message": "Record is not found."},
@@ -2849,7 +3074,7 @@ class PaymentMethodView(APIView):
 
             # Value Validation
             validator = PaymentMethodValidator(serializer.validated_data,
-                                      fields=["name", "icon", "holder", "num"])
+                                               fields=["name", "icon", "holder", "num"])
 
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
@@ -2886,10 +3111,13 @@ class PaymentMethodView(APIView):
 
                 payment_method.save()
 
-                return JsonResponse({"result": "success", "message": "Payment method is updated successfully."},
+                serializer = PaymentMethodSerializer(payment_method).data
+
+                return JsonResponse({"result": "success", "message": "Payment method is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
-        except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException, ValueDuplicationException) as e:
+        except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException,
+                ValueDuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
             return JsonResponse({"result": "error", "message": "Payment method is not found."},
@@ -2926,10 +3154,11 @@ class PaymentMethodView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting payment method"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class PackagePlanView(APIView):
     """
-    Package plan class based view
+    Package plan class-based view
     """
 
     @extend_schema(
@@ -2973,14 +3202,13 @@ class PackagePlanView(APIView):
             name = serializer.validated_data["name"]
             overview = serializer.validated_data["overview"]
             price = serializer.validated_data["price"]
-            entities = serializer.validated_data["entities"]
+            entities = serializer.validated_data["entities"] # course, meal plan, audio book
             offers = serializer.validated_data["offers"]
-
 
             # Value Validation
             validator = PackagePlanValidator(serializer.validated_data,
-                                               fields=["name", "overview", "price", "entities", "offers"],
-                                               null_validation=True)
+                                             fields=["name", "overview", "price", "entities", "offers"],
+                                             null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -2999,7 +3227,9 @@ class PackagePlanView(APIView):
                 )
                 package.save()
 
-                return JsonResponse({"result": "success", "message": "Package plan is added successfully."},
+                serializer = PackagePlanSerializer(package).data
+
+                return JsonResponse({"result": "success", "message": "Package plan is added successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, TitleDuplicationException) as e:
@@ -3036,7 +3266,7 @@ class PackagePlanView(APIView):
 
             # Value Validation
             validator = PackagePlanValidator(serializer.validated_data,
-                                               fields=["name", "overview", "price", "entities", "offers"])
+                                             fields=["name", "overview", "price", "entities", "offers"])
 
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
@@ -3062,7 +3292,9 @@ class PackagePlanView(APIView):
 
                 package_plan.save()
 
-                return JsonResponse({"result": "success", "message": "Package plan is updated successfully."},
+                serializer = PackagePlanSerializer(package_plan).data
+
+                return JsonResponse({"result": "success", "message": "Package plan is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException, ValidationException, TitleDuplicationException) as e:
@@ -3101,6 +3333,7 @@ class PackagePlanView(APIView):
             logger.error("Error occurred while deleting package plan: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while deleting package plan"},
                                 status=status.HTTP_400_BAD_REQUEST)
+
 
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class EcommercePCView(APIView):
@@ -3146,28 +3379,34 @@ class EcommercePCView(APIView):
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
 
-            order_id = serializer.validated_data["order_id"]
-            user_name = serializer.validated_data["user_name"]
             user_email = serializer.validated_data["user_email"]
             user_phone = serializer.validated_data["user_phone"]
             items = serializer.validated_data["items"]
-            price = serializer.validated_data["price"]
-            method_id = serializer.validated_data["method"]
+            quantity = serializer.validated_data["quantity"]
+            method = serializer.validated_data["method"]
             proof = serializer.validated_data["proof"]
 
             # Value Validation
             validator = EcommercePCValidator(serializer.validated_data,
-                                             fields=["order_id", "user_name", "user_email", "user_phone", "items", "price", "method_id",
+                                             fields=["user_email", "user_phone", "items",
+                                                     "quantity", "method",
                                                      "proof"],
                                              null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
             with transaction.atomic():
-                if EcommercePC.objects.filter(order_id=order_id).exists():
-                    raise DuplicationException("Order ID is already found.")
+                # Generate order id
+                order_id = None
+                while True:
+                    order_id = OrderIDGenerator.generate_short_order_id()
+                    if EcommercePC.objects.filter(order_id=order_id).exists():
+                        continue
+                    else:
+                        break
 
-                if not PaymentMethod.objects.filter(_id=method_id).exists():
+                payment_method = PaymentMethod.objects.filter(_id=method).first()
+                if not payment_method:
                     raise ValueErrorException("Payment method is not found.")
 
                 # Upload payment proof
@@ -3181,24 +3420,40 @@ class EcommercePCView(APIView):
                             destination.write(chunk)
                     file_name = file_name + '.' + proof.name.split('.')[-1]
 
+                # Logged user profile
+                user = CustomUser.objects.filter(username=request.user).first()
+
+                # Calculate the total price by multiplying the price of item by quantity
+                total_price = 0
+                for item_id, qty in zip(items, quantity):
+                    # Fetch the item price (adjust model/field as appropriate)
+                    item = Item.objects.filter(_id=item_id).first()
+                    if item:
+                        total_price += Decimal(item.price) * int(qty)
+
                 ecommerce_pc = EcommercePC.objects.create(
                     order_id=order_id,
-                    user_name=user_name,
+                    user_name=user,
                     user_email=user_email,
                     user_phone=user_phone,
                     items=items,
-                    total_price=price,
-                    method_id=method_id,
+                    quantity=quantity,
+                    total_price=total_price,
+                    method=payment_method,
                     proof=file_name,
                     created_at=today,
                     updated_at=today
                 )
                 ecommerce_pc.save()
 
-                return JsonResponse({"result": "success", "message": "Ecommerce payment confirmation is added successfully."},
-                                    status=status.HTTP_200_OK)
+                serializer = EcommercePCSerializer(ecommerce_pc).data
 
-        except (BaseClassSerializerException, ValidationException, TitleDuplicationException, DuplicationException, ValueErrorException) as e:
+                return JsonResponse(
+                    {"result": "success", "message": "Ecommerce payment confirmation is added successfully.", "content": serializer},
+                    status=status.HTTP_200_OK)
+
+        except (BaseClassSerializerException, ValidationException, TitleDuplicationException, DuplicationException,
+                ValueErrorException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
             return JsonResponse({"result": "error", "message": "Record is not found."},
@@ -3221,7 +3476,7 @@ class EcommercePCView(APIView):
                 raise BaseClassSerializerException(serializer.errors)
 
             _id = serializer.validated_data["_id"]
-            _status = serializer.validated_data["status"]
+            _status = serializer.validated_data["status"] # new -> confirmed/declined/rejected
 
             if not _id:
                 raise UUIDException("Record is not found.")
@@ -3236,7 +3491,9 @@ class EcommercePCView(APIView):
 
                 ecommerce_pc.save()
 
-                return JsonResponse({"result": "success", "message": "Ecommerce PC is updated successfully."},
+                serializer = EcommercePCSerializer(ecommerce_pc).data
+
+                return JsonResponse({"result": "success", "message": "Ecommerce PC is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException) as e:
@@ -3276,10 +3533,11 @@ class EcommercePCView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting ecommerce pc"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class PackagePCView(APIView):
     """
-    Package payment confirmation class based view
+    Package payment confirmation class-based view
     """
 
     @extend_schema(
@@ -3320,25 +3578,22 @@ class PackagePCView(APIView):
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
 
-            package = serializer.validated_data["package"]
-            email = serializer.validated_data["email"]
-            method_id = serializer.validated_data["method"]
+            package = serializer.validated_data["package"] # package id
+            email = serializer.validated_data["email"] # user email which has an account
+            method = serializer.validated_data["method"] # payment method id
             proof = serializer.validated_data["proof"]
-
+            print(type(proof))
             # Value Validation
             validator = PackagePCValidator(serializer.validated_data,
-                                             fields=["package", "email", "method_id", "proof"],
-                                             null_validation=True)
+                                           fields=["package", "email", "method", "proof"],
+                                           null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
             with transaction.atomic():
-                if not PaymentMethod.objects.filter(_id=method_id).exists():
-                    raise ValueErrorException("Payment method is not found.")
-
-                if not Package.objects.filter(_id=package).exists():
-                    raise ValueErrorException("Selected package is not found")
-                price = Package.objects.get(_id=package).price
+                payment_method = get_object_or_404(PaymentMethod.objects, _id=method)
+                package_plan = get_object_or_404(Package.objects, _id=package)
+                price = package_plan.price
 
                 # Upload payment proof
                 file_name = str(uuid.uuid4())
@@ -3350,19 +3605,26 @@ class PackagePCView(APIView):
                         for chunk in proof.chunks():
                             destination.write(chunk)
                     file_name = file_name + '.' + proof.name.split('.')[-1]
+
+                user = CustomUser.objects.filter(username=email.lower()).first()
+                if not user:
+                    raise ValueErrorException("User not found by the given email")
+
                 package_pc = PackagePC.objects.create(
-                    package_id=package,
-                    user_id=email,
+                    package=package_plan,
+                    user=user,
                     price=price,
                     proof=file_name,
-                    method_id=method_id,
+                    method=payment_method,
                     created_at=today,
                     updated_at=today
                 )
                 package_pc.save()
 
+                serializer = PackagePCSerializer(package_pc).data
+
                 return JsonResponse(
-                    {"result": "success", "message": "Package payment confirmation is added successfully."},
+                    {"result": "success", "message": "Package payment confirmation is added successfully.", "content": serializer},
                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, ValueErrorException) as e:
@@ -3403,7 +3665,9 @@ class PackagePCView(APIView):
 
                 package_pc.save()
 
-                return JsonResponse({"result": "success", "message": "Package PC is updated successfully."},
+                serializer = PackagePCSerializer(package_pc).data
+
+                return JsonResponse({"result": "success", "message": "Package PC is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException) as e:
@@ -3443,10 +3707,11 @@ class PackagePCView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting package pc"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class AppointmentView(APIView):
     """
-    Appointment class based view
+    Appointment-class-based view
     """
 
     @extend_schema(
@@ -3487,22 +3752,28 @@ class AppointmentView(APIView):
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
 
-            customer = serializer.validated_data["customer"]
+            customer = serializer.validated_data["customer"] # customer email address associated with account
             subject = serializer.validated_data["subject"]
             message = serializer.validated_data["message"]
-            schedule = serializer.validated_data["schedule"]
+            schedule = serializer.validated_data["schedule"] # YYYY_MM_DD
 
             # Value Validation
             validator = AppointmentValidator(serializer.validated_data,
-                                           fields=["customer", "subject", "message", "schedule"],
-                                           null_validation=True)
+                                             fields=["customer", "subject", "message", "schedule"],
+                                             null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
+            # check the schedule date must be least 1 day beyond
+            schedule_date = datetime.strptime(schedule, "%Y-%m-%d").date()
+            if schedule_date < (datetime.today().date() + timedelta(days=1)):
+                raise ValidationException("Date must be at least one day beyond today.")
+
             with transaction.atomic():
                 # Check whether customer exists or not
+                user = get_object_or_404(CustomUser.objects, username=customer.lower())
                 appointment = Appointment.objects.create(
-                    customer=customer,
+                    customer=user,
                     subject=subject,
                     message=message,
                     schedule=schedule,
@@ -3511,8 +3782,10 @@ class AppointmentView(APIView):
                 )
                 appointment.save()
 
+                serializer = AppointmentSerializer(appointment).data
+
                 return JsonResponse(
-                    {"result": "success", "message": "Appointment is added successfully."},
+                    {"result": "success", "message": "Appointment is added successfully.", "content": serializer},
                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException) as e:
@@ -3538,8 +3811,8 @@ class AppointmentView(APIView):
                 raise BaseClassSerializerException(serializer.errors)
 
             _id = serializer.validated_data["_id"]
-            link = serializer.validated_data["link"]
-            _status = serializer.validated_data["status"]
+            link = serializer.validated_data["link"] # meeting link
+            _status = serializer.validated_data["_status"] # approved
 
             if not _id:
                 raise UUIDException("Record is not found.")
@@ -3556,7 +3829,9 @@ class AppointmentView(APIView):
 
                 appointment.save()
 
-                return JsonResponse({"result": "success", "message": "Appointment is updated successfully."},
+                serializer = AppointmentSerializer(appointment).data
+
+                return JsonResponse({"result": "success", "message": "Appointment is updated successfully.", "content": serializer},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, UUIDException) as e:
@@ -3596,10 +3871,11 @@ class AppointmentView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting appointment"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class LocalizationView(APIView):
     """
-    Localization class based view
+    Localization class-based view
     """
 
     @extend_schema(
@@ -3640,9 +3916,9 @@ class LocalizationView(APIView):
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
 
-            content_key = serializer.validated_data["content_key"]
-            content_value = serializer.validated_data["content_value"]
-            entity = serializer.validated_data["entity"]
+            content_key = serializer.validated_data["content_key"] # English term
+            content_value = serializer.validated_data["content_value"] # Amahric term
+            entity = serializer.validated_data["entity"] # Course, meal plan, audiobook, header,  footer, menu
 
             with transaction.atomic():
                 formats = Localization.objects.all()

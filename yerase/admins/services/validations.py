@@ -974,21 +974,21 @@ class ItemValidator:
         return
 
     def validate_min_value(self):
-        value = self.data.get("min-value")
-        if self.empty_validation and value in [None, ""]:
-            self.errors["min-value"] = "Minimum value is required."
-            return
-        if self.null_validation and value is None:
-            self.errors["min-value"] = "Minimum value cannot be null."
+        # value = self.data.get("min-value")
+        # if self.empty_validation and value in [None, ""]:
+        #     self.errors["min-value"] = "Minimum value is required."
+        #     return
+        # if self.null_validation and value is None:
+        #     self.errors["min-value"] = "Minimum value cannot be null."
         return
 
     def validate_max_value(self):
-        value = self.data.get("max-value")
-        if self.empty_validation and value in [None, ""]:
-            self.errors["max-value"] = "Maximum value is required."
-            return
-        if self.null_validation and value is None:
-            self.errors["max-value"] = "Maximum value cannot be null."
+        # value = self.data.get("max-value")
+        # if self.empty_validation and value in [None, ""]:
+        #     self.errors["max-value"] = "Maximum value is required."
+        #     return
+        # if self.null_validation and value is None:
+        #     self.errors["max-value"] = "Maximum value cannot be null."
         return
 
     def validate_size_selection(self):
@@ -1192,8 +1192,8 @@ class EcommercePCValidator:
             self.validate_user_phone()
         if "items" in self.fields:
             self.validate_items()
-        if "price" in self.fields:
-            self.validate_price()
+        if "quantity" in self.fields:
+            self.validate_quantity()
         if "method" in self.fields:
             self.validate_method()
         if "proof" in self.fields:
@@ -1249,18 +1249,14 @@ class EcommercePCValidator:
         if self.null_validation and items is None:
             self.errors["items"] = "Items cannot be null."
 
-    def validate_price(self):
-        price = self.data.get("price")
-        if self.empty_validation and price in [None, ""]:
-            self.errors["price"] = "Price is required."
+    def validate_quantity(self):
+        quantity = self.data.get("quantity")
+        if self.empty_validation and not quantity:
+            self.errors["quantity"] = "quantity is required."
             return
-        if self.null_validation and price is None:
-            self.errors["price"] = "Price cannot be null."
+        if self.null_validation and quantity is None:
+            self.errors["quantity"] = "quantity cannot be null."
             return
-        try:
-            float(price)
-        except (ValueError, TypeError):
-            self.errors["price"] = "Price must be a valid number."
 
     def validate_method(self):
         method = self.data.get("method")

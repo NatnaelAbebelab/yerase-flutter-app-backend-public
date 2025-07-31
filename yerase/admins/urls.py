@@ -19,8 +19,6 @@ urlpatterns = [
     path('course/', CourseView.as_view(), name='course'),
     path('course-lesson/', CourseLessonView.as_view(), name='course-lesson'),
     path('course-review/', CourseReviewView.as_view(), name='course-review'),
-    path('item-cart/', ItemCartView.as_view(), name='item-cart'),
-    path('item-wishlist/', ItemWishlistView.as_view(), name='item-wishlist'),
 
     path('meal-plans/', MealPlanView.as_view(), name='meal-plans'),
     path('meal-plan-recipe/', MealPlanRecipeView.as_view(), name='meal-plan-recipe'),
@@ -30,6 +28,8 @@ urlpatterns = [
 
     path('item-category/', ItemCategoryView.as_view(), name='item-category'),
     path('item/', ItemView.as_view(), name='item'),
+    path('item-cart/', ItemCartView.as_view(), name='item-cart'),
+    path('item-wishlist/', ItemWishlistView.as_view(), name='item-wishlist'),
 
     path('payment-method/', PaymentMethodView.as_view(), name='payment-method'),
 
