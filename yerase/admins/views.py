@@ -260,7 +260,7 @@ class AdminAccountView(APIView):
             # Value Validation
             validator = AdminAccountDataValidator(serializer.validated_data,
                                                   fields=["fname", "lname", "email", "phone", "role"],
-                                                  null_validation=True)
+                                                  null_validation=False)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 

@@ -131,7 +131,7 @@ class ItemSerializer(serializers.ModelSerializer):
         fields = [f.name for f in Item._meta.fields] + ["category"]
 
     def get_category(self, obj):
-        return obj.category.name if obj.category else None
+        return obj.category.name if obj.category else "UNCATEGORIZED"
 
 class ItemCartSerializer(serializers.ModelSerializer):
     class Meta:

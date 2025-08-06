@@ -12,8 +12,8 @@ class CreateAccountSerializer(serializers.Serializer):
     password = serializers.CharField(required=True)
 
     # Default to 0 if not provided
-    weight = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=0)
-    height = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=0)
+    weight = serializers.FloatField(required=False, default=0)
+    height = serializers.FloatField(required=False, default=0)
     age = serializers.IntegerField(required=False, default=0)
 
     # Default to '-' if not provided
@@ -22,7 +22,7 @@ class CreateAccountSerializer(serializers.Serializer):
 class AccountActivationSerializer(serializers.Serializer):
     otp_code = serializers.CharField(required=True)
     email = serializers.EmailField(required=True)
-    password = serializers.CharField(required=True)
+    # password = serializers.CharField(required=True)
 
 class SignInSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
@@ -36,15 +36,15 @@ class UpdateAccountProfileSerializer(serializers.Serializer):
     lname = serializers.CharField(required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     phone = serializers.CharField(required=False, allow_blank=True)
-    weight = serializers.DecimalField(required=False, default=0, max_digits=3, decimal_places=2)
-    height = serializers.DecimalField(required=False, default=0, max_digits=3, decimal_places=2)
+    weight = serializers.FloatField(required=False, default=0)
+    height = serializers.FloatField(required=False, default=0)
     age = serializers.IntegerField(required=False, default=0)
-    gender = serializers.CharField(required=False, allow_blank=True)
+    gender = serializers.ChoiceField(choices=['M', 'F'], required=False, allow_blank=True)
     profile = serializers.FileField(required=False,allow_null=True)
 
 class ChangePasswordSerializer(serializers.Serializer):
     current = serializers.CharField(required=True)
-    new_pass = serializers.CharField(required=True)
+    password = serializers.CharField(required=True)
 
 class BookAppointmentSerializer(serializers.Serializer):
     subject = serializers.CharField(required=True)
@@ -62,7 +62,7 @@ class AddToWishListSerializer(serializers.Serializer):
 
 class AddItemReviewSerializer(serializers.Serializer):
     item = serializers.CharField(required=True)
-    rate = serializers.DecimalField(required=True, max_digits=2, decimal_places=2)
+    rate = serializers.FloatField(required=True)
     review = serializers.CharField(required=True)
 
 class DeleteCartItemSerializer(serializers.Serializer):
@@ -75,14 +75,19 @@ class PaymentConfirmationOrderEcommerceSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
     email = serializers.EmailField(required=True)
     phone = serializers.CharField(required=True)
-    method_ = serializers.CharField(required=True)
+    method = serializers.CharField(required=True)
     proof = serializers.FileField(required=True)
 
-class PackagePCSerializer(serializers.Serializer):
-    fname = serializers.CharField(required=True)
-    lname = serializers.CharField(required=True)
+class PackagePCOrderSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
-    phone = serializers.CharField(required=True)
     plan = serializers.CharField(required=True)
-    method_ = serializers.CharField(required=True)
+    method = serializers.CharField(required=True)
     proof = serializers.FileField(required=True)
+
+class CreatePlaylistSerializer(serializers.Serializer):
+    name = serializers.CharField(required=True)
+    audios = serializers.ListField(required=True)
+
+class AddAudioToPlaylistSerializer(serializers.Serializer):
+    _id = serializers.CharField(required=True)
+    audios = serializers.ListField(required=True)

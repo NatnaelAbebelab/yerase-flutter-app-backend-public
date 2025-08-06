@@ -92,7 +92,7 @@ class AdminAccountDataValidator:
         if self.null_validation and not role:
             self.errors["role"] = "Role is required."
             return
-        if role not in Roles.values:
+        if (self.null_validation or self.empty_validation) and role not in Roles.values:
             self.errors["role"] = f"Invalid role. Must be one of: {', '.join(Roles.values)}"
             return
         

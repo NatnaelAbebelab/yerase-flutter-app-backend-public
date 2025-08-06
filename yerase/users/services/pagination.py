@@ -1,5 +1,7 @@
 from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
 from admins.serializers import *
+from users.serializers import PlaylistSerializer, GetAllPlaylistsSerializer
+
 
 class Pagination(PageNumberPagination):
     # /api/grn?page=2&page_size=20
@@ -134,4 +136,11 @@ class LocalizationDataPagination(Pagination):
     def paginate_localization(self, request, queryset):
         paginated_queryset = self.paginate_queryset(queryset, request)
         serializer = LocalizationSerializer(paginated_queryset, many=True, context={'request': request})
+        return self.get_paginated_response(serializer.data)
+
+class PlaylistDataPagination(Pagination):
+
+    def paginate_playlist(self, request, queryset):
+        paginated_queryset = self.paginate_queryset(queryset, request)
+        serializer = GetAllPlaylistsSerializer(paginated_queryset, many=True, context={'request': request})
         return self.get_paginated_response(serializer.data)

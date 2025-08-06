@@ -4,7 +4,7 @@ from datetime import datetime
 from accounts.models import CustomUser
 import uuid
 
-class UsersItemManager(models.Manager):
+class ItemManager(models.Manager):
     def get_queryset(self):
         return super().get_queryset().filter(is_deleted=False)
 
@@ -29,10 +29,36 @@ class CustomUsers(models.Model):
     record_time = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.admin.username
+        return self.user.username
     
-    objects = UsersItemManager() # Only fetch active items
+    objects = ItemManager() # Only fetch active items
     all_objects = models.Manager() # Fetch all items
+
+    def delete(self, *args, **kwargs):
+        self.is_deleted = True
+        self.updated_at = datetime.today().strftime('%Y-%m-%d')
+        self.save()
+
+    def restore(self):
+        self.is_deleted = False
+        self.updated_at = datetime.today().strftime('%Y-%m-%d')
+        self.save()
+
+class Playlist(models.Model):
+    _id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(CustomUser, on_delete=models.SET_DEFAULT, default=1)
+    name = models.CharField(max_length=255, blank=True)
+    audios = models.JSONField(default=list, blank=True)
+    is_deleted = models.BooleanField(default=False)
+    created_at = models.CharField(max_length=255, blank=True)
+    updated_at = models.CharField(max_length=255, blank=True)
+    record_time = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return str(self._id)
+
+    objects = ItemManager()
+    all_objects = models.Manager()
 
     def delete(self, *args, **kwargs):
         self.is_deleted = True

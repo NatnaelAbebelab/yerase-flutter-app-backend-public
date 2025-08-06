@@ -8,7 +8,7 @@ class RoleBasedPermission(BasePermission):
 
     allowed_roles = []  # This will be dynamically assigned by the decorator
 
-    def has_permission(self, request, view):
+    def has_permission(self, request, view=None):
         # Check if user is authenticated
         if not request.user or not request.user.is_authenticated:
             raise NotAuthenticated("Please log in")

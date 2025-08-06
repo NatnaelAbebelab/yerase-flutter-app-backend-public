@@ -102,8 +102,7 @@ class UserAccountDataValidator:
     def validate_weight(self):
         weight = self.data.get("weight", 0)
         try:
-            weight = float(weight)
-            if weight < 0:
+            if float(weight) < 0:
                 self.errors["weight"] = "Weight cannot be negative."
         except (ValueError, TypeError):
             self.errors["weight"] = "Weight must be a number."
@@ -240,10 +239,10 @@ class AppointmentDataValidator:
         if self.null_validation and schedule is None:
             self.errors["schedule"] = "Schedule cannot be null."
             return
-        try:
-            datetime.fromisoformat(schedule)
-        except (ValueError, TypeError):
-            self.errors["schedule"] = "Schedule must be a valid ISO datetime format (e.g., YYYY-MM-DDTHH:MM:SS)."
+        # try:
+        #     datetime.fromisoformat(schedule)
+        # except (ValueError, TypeError):
+        #     self.errors["schedule"] = "Schedule must be a valid ISO datetime format (e.g., YYYY-MM-DDTHH:MM:SS)."
 
 class ToCartDataValidator():
     def __init__(self, data, fields=None, empty_validation=True, null_validation=True):
@@ -514,3 +513,40 @@ class PackagePCValidator:
             return
         if proof and len(str(proof).strip()) < 2:
             self.errors["proof"] = "Proof must be at least 2 characters."
+
+class PlaylistDataValidator:
+    def __init__(self, data, fields=None, empty_validation=True, null_validation=True):
+        self.data = data
+        self.fields = fields or ["name", "audios"]
+        self.empty_validation = empty_validation
+        self.null_validation = null_validation
+        self.errors = {}
+
+    def is_valid(self):
+        if "name" in self.fields:
+            self.validate_name()
+        if "audios" in self.fields:
+            self.validate_audios()
+        return not bool(self.errors)
+
+    def validate_name(self):
+        name = self.data.get("name")
+        if self.null_validation and name is None:
+            self.errors["name"] = "Name cannot be null."
+            return
+        if self.empty_validation and (not str(name).strip()):
+            self.errors["name"] = "Name is required."
+            return
+        if len(str(name).strip()) < 2:
+            self.errors["name"] = "Name must be at least 2 characters."
+
+    def validate_audios(self):
+        audios = self.data.get("audios")
+        if self.null_validation and audios is None:
+            self.errors["audios"] = "Audios cannot be null."
+            return
+        if not isinstance(audios, list):
+            self.errors["audios"] = "Audios must be a list."
+            return
+        if self.empty_validation and len(audios) == 0:
+            self.errors["audios"] = "Audios list cannot be empty."

@@ -152,4 +152,7 @@ class ValueDuplicationException(Exception):
         super().__init__(message, data)
 
     def __str__(self):
-        return self.message, self.data
+        if self.data:
+            return f"{self.message} - Data: {self.data}"
+        return self.message
+
