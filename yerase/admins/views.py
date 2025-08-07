@@ -1,6 +1,6 @@
-import json
-import logging
 import os
+import logging
+import librosa
 import random
 import requests
 import secrets
@@ -19,15 +19,13 @@ from django.shortcuts import get_object_or_404
 from django.template.loader import get_template
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from pydub import AudioSegment
 from rest_framework.decorators import permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
-from mutagen.mp3 import MP3
-from mutagen.wave import WAVE
 from utils.exceptions import *
 from utils.permissions import role_required
 from utils.generateOrderId import OrderIDGenerator
+from utils.audioSlicer import AudioSlicer
 from .requestSerializers import *
 from .services.pagination import *
 from .services.roles import get_user_role
@@ -54,7 +52,6 @@ def generate_temp_password(length):
 
 def generate_otp():
     return str(random.randint(100000, 999999))
-
 
 class AdminLoginView(APIView):
     """
@@ -2147,36 +2144,13 @@ class AudiobookView(APIView):
                         for chunk in audio.chunks():
                             destination.write(chunk)
 
-                    # Extract audio duration
-                    if file_ext == 'mp3':
-                        _audio = MP3(audio_path)
-                        duration = round(_audio.info.length)
-                    elif file_ext == 'wav':
-                        _audio = WAVE(audio_path)
-                        duration = round(_audio.info.length)
+                    # Extract audio duration using librosa
+                    audio_data, sr = librosa.load(audio_path, sr=None, mono=True)
+                    duration = round(len(audio_data) / sr)
 
-                    # Slice the audio
-                    sliced_audio_file_name = f"{uuid.uuid4()}.{file_ext}"
-                    sliced_audio_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-sliced-audio",
-                                                     sliced_audio_file_name)
-                    os.makedirs(os.path.dirname(sliced_audio_path), exist_ok=True)
-
-                    audio_segment = AudioSegment.from_file(audio_path)
-                    audio_length_ms = len(audio_segment)
-                    min_length_ms = 30 * 1000  # 30 seconds
-                    max_length_ms = 2 * 60 * 1000  # 2 minutes
-
-                    start_ms = int(audio_length_ms * 0.10)
-                    end_ms = int(audio_length_ms * 0.20)
-
-                    slice_length_ms = end_ms - start_ms
-                    if slice_length_ms < min_length_ms:
-                        end_ms = min(start_ms + min_length_ms, audio_length_ms)
-                    elif slice_length_ms > max_length_ms:
-                        end_ms = start_ms + max_length_ms
-
-                    sliced_audio = audio_segment[start_ms:end_ms]
-                    sliced_audio.export(sliced_audio_path, format=file_ext)
+                    # Slice the audio (saves as WAV)
+                    sliced_audio_path = AudioSlicer.slice_audio_with_librosa(audio_path, file_ext)
+                    sliced_audio_file_name = os.path.basename(sliced_audio_path)
 
                 audio_book = Audiobook.objects.create(
                     title=title.lower(),
@@ -2207,6 +2181,10 @@ class AudiobookView(APIView):
         except Http404:
             return JsonResponse({"result": "error", "message": "Record is not found."},
                                 status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            logger.error("Error occurred while processing audio: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while uploading the audio"},
+                                status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error("Error occurred while creating audiobook: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while creating audiobook"},
@@ -2273,36 +2251,13 @@ class AudiobookView(APIView):
                         for chunk in audio.chunks():
                             destination.write(chunk)
 
-                    # Extract audio duration
-                    if file_ext == 'mp3':
-                        _audio = MP3(audio_path)
-                        duration = round(_audio.info.length)
-                    elif file_ext == 'wav':
-                        _audio = WAVE(audio_path)
-                        duration = round(_audio.info.length)
+                    # Extract audio duration using librosa
+                    audio_data, sr = librosa.load(audio_path, sr=None, mono=True)
+                    duration = round(len(audio_data) / sr)
 
-                    # Slice the audio
-                    sliced_audio_file_name = f"{uuid.uuid4()}.{file_ext}"
-                    sliced_audio_path = os.path.join(settings.MEDIA_ROOT, "audiobook/audiobook-sliced-audio",
-                                                     sliced_audio_file_name)
-                    os.makedirs(os.path.dirname(sliced_audio_path), exist_ok=True)
-
-                    audio_segment = AudioSegment.from_file(audio_path)
-                    audio_length_ms = len(audio_segment)
-                    min_length_ms = 30 * 1000  # 30 seconds
-                    max_length_ms = 2 * 60 * 1000  # 2 minutes
-
-                    start_ms = int(audio_length_ms * 0.10)
-                    end_ms = int(audio_length_ms * 0.20)
-
-                    slice_length_ms = end_ms - start_ms
-                    if slice_length_ms < min_length_ms:
-                        end_ms = min(start_ms + min_length_ms, audio_length_ms)
-                    elif slice_length_ms > max_length_ms:
-                        end_ms = start_ms + max_length_ms
-
-                    sliced_audio = audio_segment[start_ms:end_ms]
-                    sliced_audio.export(sliced_audio_path, format=file_ext)
+                    # Slice the audio (saves as WAV)
+                    sliced_audio_path = AudioSlicer.slice_audio_with_librosa(audio_path, file_ext)
+                    sliced_audio_file_name = os.path.basename(sliced_audio_path)
 
                     audio_book.duration = duration
                     audio_book.audio = audio_file_name
