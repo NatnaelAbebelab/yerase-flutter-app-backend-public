@@ -147,7 +147,7 @@ class CustomerAccountViewSet(viewsets.ViewSet):
                 email.send()
 
                 return Response(
-                    {"result": "success", "message": "You have signed up successfully.", "content": serializer},
+                    {"result": "success", "message": "You have signed up successfully. Activate your account to sign in.", "content": serializer},
                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, ValueDuplicationException) as e:
@@ -591,7 +591,8 @@ class AppointmentViewSet(viewsets.ViewSet):
     @permission_classes([IsAuthenticated, role_required(["user"])])
     def get_appointments(self, request):
         try:
-            appointments = Appointment.objects.all().order_by("-record_time")
+            user = get_object_or_404(CustomUser.objects, username=request.user)
+            appointments = Appointment.objects.filter(customer=user).all().order_by("-record_time")
 
             if not appointments:
                 raise Http404
@@ -625,8 +626,14 @@ class AppointmentViewSet(viewsets.ViewSet):
                 return JsonResponse({"result": "error", "message": "Appointment ID is required."},
                                     status=status.HTTP_400_BAD_REQUEST)
 
+            user = get_object_or_404(CustomUser.objects, username=request.user)
             appointment = get_object_or_404(Appointment.objects, _id=appointment_id)
-            appointment.delete()
+
+            if appointment.customer == user:
+                appointment.delete()
+            else:
+                raise Http404
+
             return JsonResponse({"result": "success", "message": "Appointment deleted successfully."},
                                 status=status.HTTP_200_OK)
 

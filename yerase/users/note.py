@@ -159,7 +159,7 @@ class RegisterView(APIView):
 
 class ActivateAccountView(APIView):
     """
-    Activate account class based view.
+    Activate account-class-based view.
     Users activate their account by login/signin in which the sign in URL contains the OTP code
     """
 

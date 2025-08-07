@@ -1,1 +1,27 @@
-[2025-07-20 07:52:05,128] ERROR users.views - Error occurred while fetching meal plan: ['ï¿½1ï¿½ is not a valid UUID.']
+[2025-08-06 04:53:19,763] ERROR users.views - Error occurred while fetching course: 'NoneType' object has no attribute 'package'
+[2025-08-06 04:56:55,201] ERROR users.views - Error occurred while fetching course: 'Course' object has no attribute 'catgeory'
+[2025-08-06 04:57:40,963] ERROR users.views - Error occurred while fetching course: 'Course' object has no attribute 'catgeory'
+[2025-08-06 04:58:05,963] ERROR users.views - Error occurred while fetching course: 'Course' object has no attribute 'catgeory'
+[2025-08-06 04:59:24,397] ERROR users.views - Error occurred while fetching course: 'Course' object has no attribute 'catgeory'
+[2025-08-06 05:00:27,044] ERROR users.views - Error occurred while fetching course: 'Course' object has no attribute 'catgeory'
+[2025-08-06 05:01:32,480] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
+[2025-08-06 05:02:10,289] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
+[2025-08-06 05:02:11,578] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
+[2025-08-06 05:02:32,935] ERROR users.views - Error occurred while fetching course: ['“27ce43d7-b9eb-4368-b208-c44f0245e10b” is not a valid UUID.']
+[2025-08-06 05:03:09,083] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
+[2025-08-06 05:09:57,234] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
+[2025-08-06 05:11:26,198] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
+[2025-08-06 05:15:16,280] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
+[2025-08-06 05:30:11,265] ERROR users.views - Error occurred while fetching course: ['“27ce43d7-b9eb-4368-b208-c44f0245e10b” is not a valid UUID.']
+[2025-08-06 05:40:20,945] ERROR users.views - Error occurred while fetching meal plans: 'str' object has no attribute 'course'
+[2025-08-06 05:41:20,604] ERROR users.views - Error occurred while fetching meal plans: 'str' object has no attribute 'course'
+[2025-08-06 05:55:27,392] ERROR users.views - Error occurred while fetching meal plan: 'QuerySet' object has no attribute 'title'
+[2025-08-06 09:16:35,051] ERROR users.views - Error occurred while fetching audiobooks: ["“{'id': UUID('15cf052a-f2be-41b9-8ef4-67e0943cd48f'), 'name': 'updated name'}” is not a valid UUID."]
+[2025-08-06 09:21:52,115] ERROR users.views - Error occurred while fetching audiobook: 'QuerySet' object has no attribute 'name'
+[2025-08-06 11:01:39,407] ERROR users.views - Error occurred while creating playlist: Playlist name is already found.
+[2025-08-06 11:48:05,527] ERROR users.views - Error occurred while creating playlist: Playlist name is already found.
+[2025-08-06 11:50:59,846] ERROR users.views - Error occurred while creating playlist: Playlist name is already found.
+[2025-08-06 12:11:15,473] ERROR users.views - Error occurred while creating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6o” is not a valid UUID.']
+[2025-08-06 12:11:43,702] ERROR users.views - Error occurred while creating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6w” is not a valid UUID.']
+[2025-08-06 12:12:03,710] ERROR users.views - Error occurred while creating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6w” is not a valid UUID.']
+[2025-08-06 12:22:20,099] ERROR users.views - Error occurred while updating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6o” is not a valid UUID.']
