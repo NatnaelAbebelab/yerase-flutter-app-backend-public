@@ -863,10 +863,10 @@ class EcommerceViewSet(viewsets.ViewSet):
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
 
-            item = serializer.validated_data["item"]
-            quantity = serializer.validated_data["quantity"]
-            color = serializer.validated_data["color"]
-            measurement = serializer.validated_data["measurement"] # It is a measurement unit
+            item = serializer.validated_data.get("item")
+            quantity = serializer.validated_data.get("quantity")
+            color = serializer.validated_data.get("color")
+            measurement = serializer.validated_data.get("measurement") # It is a measurement unit
 
             # Value Validation
             validator = ToCartDataValidator(serializer.validated_data,
@@ -879,9 +879,10 @@ class EcommerceViewSet(viewsets.ViewSet):
                 user = get_object_or_404(CustomUser.objects, email=request.user)
                 cart = Cart.objects.filter(owner=user).first()
                 wishlist = Wishlist.objects.filter(owner=user).first()
+                selected_item = get_object_or_404(Item.objects, _id=item)
 
                 if cart:
-                    price = Item.objects.get(_id=item).price
+                    price = selected_item.price
                     if not item in cart.items:
                         cart.items.append(item)
                         cart.quantity.append(quantity)
