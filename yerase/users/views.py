@@ -1,11 +1,9 @@
 import logging
 import os
 import random
-
 import secrets
 import string
 from datetime import date
-from uuid import UUID
 
 from django.db.models.fields import FloatField
 from rest_framework import viewsets
@@ -2133,4 +2131,3 @@ class AudioBookViewSet(viewsets.ViewSet):
             logger.error("Error occurred while removing deleting playlist: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while deleting playlist"},
                                 status=status.HTTP_400_BAD_REQUEST)
-
