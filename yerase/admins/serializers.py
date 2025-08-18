@@ -153,15 +153,27 @@ class PackagePlanSerializer(serializers.ModelSerializer):
         model = Package
         fields = '__all__'
 
+class ItemLightSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Item
+        fields = ["_id", "name", "price"]
+
 class EcommercePCSerializer(serializers.ModelSerializer):
     method = serializers.SerializerMethodField()
+    items_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = EcommercePC
-        fields = [f.name for f in EcommercePC._meta.fields] + ["method"]
+        exclude = ["items"]
 
     def get_method(self, obj):
         return obj.method.name if obj.method else None
+
+    def get_items_detail(self, obj):
+        if not obj.items:
+            return []
+        items = Item.objects.filter(_id__in=obj.items)
+        return ItemLightSerializer(items, many=True).data
 
 class PackagePCSerializer(serializers.ModelSerializer):
     package = PackagePlanSerializer(read_only=True)

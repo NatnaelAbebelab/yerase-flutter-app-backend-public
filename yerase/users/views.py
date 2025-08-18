@@ -48,7 +48,7 @@ def generate_temp_password(length):
     characters = string.ascii_letters + string.digits + string.punctuation
     return ''.join(secrets.choice(characters) for _ in range(length))
 def generate_otp():
-    return str(random.randint(100000, 999999))
+    return str(random.randint(10000, 99999))
 
 #===================> Account Class based Views <=============================
 
@@ -134,7 +134,7 @@ class CustomerAccountViewSet(viewsets.ViewSet):
                     'fname': fname.capitalize(),
                     'lname': lname.capitalize(),
                     'email': email,
-                    'activation_link': otp_code
+                    'otp_code': otp_code
                 }
                 template = get_template('add-customer-email-template.html')
                 message_content = template.render(context)
@@ -213,6 +213,67 @@ class CustomerAccountViewSet(viewsets.ViewSet):
 
     @extend_schema(
         tags=["Customer Accounts"],
+        responses={200: dict},
+        description="Resend Activation Code"
+    )
+    @action(detail=False, methods=['post'], url_path='resend-otp-code')
+    def resend_otp_code(self, request):
+        try:
+            email = request.query_params.get("email")
+
+            with transaction.atomic():
+                # Data Validation
+                user = get_object_or_404(CustomUser.objects, email=email)
+                customer = get_object_or_404(CustomUsers.objects, user=user)
+
+                if customer.otp_code == '1':
+                    return JsonResponse({
+                        "result": "success",
+                        "message": "Your account is already active.",
+                        "content": {}
+                    })
+
+                # generate new opt code
+                while True:
+                    otp_code = generate_otp()
+                    if CustomUsers.objects.filter(otp_code=otp_code).count() > 0:
+                        continue
+                    else:
+                        break
+                customer.otp_code = otp_code
+                customer.save()
+
+                serializer = CustomerUsersAccountSerializer(customer).data
+
+                # send email notification / OTP
+                context = {
+                    'fname': user.first_name.capitalize(),
+                    'lname': user.last_name.capitalize(),
+                    'email': user.email,
+                    'otp_code': otp_code
+                }
+                template = get_template('add-customer-email-template.html')
+                message_content = template.render(context)
+                subject = 'Activate Your Account'
+                message = message_content
+                email = EmailMessage(subject, message, 'natnaelabebelab@gmail.com', [email])
+                email.content_subtype = 'html'
+                email.send()
+
+                return JsonResponse(
+                    {"result": "success", "message": "New activation code is sent your e-mail inbox.", "content": serializer},
+                    status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while resending opt code: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while sending otp code"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Customer Accounts"],
         request=SignInSerializer,
         responses={200: dict},
         description="Sign in to user account"
@@ -259,7 +320,7 @@ class CustomerAccountViewSet(viewsets.ViewSet):
                         'fname': user.first_name.capitalize(),
                         'lname': user.last_name.capitalize(),
                         'email': user.email,
-                        'activation_link': otp_code
+                        'otp_code': otp_code
                     }
                     template = get_template('add-customer-email-template.html')
                     message_content = template.render(context)
@@ -2130,4 +2191,37 @@ class AudioBookViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error("Error occurred while removing deleting playlist: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while deleting playlist"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+class PackagePlanViewSet(viewsets.ViewSet):
+    """
+    Package plan view set
+    """
+
+    @extend_schema(
+        tags=["Package Plan Users"],
+        responses={200: dict},
+        description=""
+    )
+    @action(detail=False, methods=['get'], url_path='get-package-plans')
+    def get_package_plans(self, request):
+        try:
+            plans = Package.objects.all().order_by("-record_time")
+
+            if not plans:
+                raise Http404
+
+            paginator = PackagePlanDataPagination()
+            plans_list = paginator.paginate_package(request, plans)
+
+            return JsonResponse(
+                {"result": "success", "message": "Package plans list", "content": plans_list.data},
+                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Package plan is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching package plans: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching package plans."},
                                 status=status.HTTP_400_BAD_REQUEST)

@@ -78,8 +78,20 @@ class UserAccountDataValidator:
         if self.null_validation and phone is None:
             self.errors["phone"] = "Phone cannot be null."
             return
-        if phone and not re.match(r'^\+?1?\d{9,15}$', phone):
-            self.errors["phone"] = "Phone must be a valid number with 9 to 15 digits."
+        if phone:
+            # Normalize phone by removing spaces and dashes
+            normalized_phone = phone.replace(" ", "").replace("-", "")
+
+            # Patterns:
+            # International: +2519xxxxxxxx or +2517xxxxxxxx (9 digits after +2519 or +2517)
+            # Local: 09xxxxxxxx or 07xxxxxxxx (9 digits after 09 or 07)
+            pattern_international = r'^\+251(9\d{8}|7\d{8})$'
+            pattern_local = r'^(09\d{8}|07\d{8})$'
+
+            if not (re.match(pattern_international, normalized_phone) or re.match(pattern_local, normalized_phone)):
+                self.errors["phone"] = ("Phone must be a valid Ethiopian number starting with +2519, +2517, 09, or 07 "
+                                        "followed by 8 digits.")
+                return
 
     def validate_password(self):
         password = self.data.get("password")
@@ -157,7 +169,7 @@ class AccountActivationDataValidator:
         if self.empty_validation and not otp_code:
             self.errors["otp_code"] = "OTP code is required."
             return
-        if not str(otp_code).isdigit() or len(str(otp_code)) not in [4, 6]:
+        if not str(otp_code).isdigit() or len(str(otp_code)) != 5:
             self.errors["otp_code"] = "OTP code must be a 4 or 6 digit number."
 
     def validate_email(self):
