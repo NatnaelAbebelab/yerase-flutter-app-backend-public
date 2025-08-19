@@ -50,7 +50,7 @@ def generate_temp_password(length):
 def generate_otp():
     return str(random.randint(10000, 99999))
 
-#===================> Account Class based Views <=============================
+#===================> View Sets <=============================
 
 class CustomerAccountViewSet(viewsets.ViewSet):
     """
