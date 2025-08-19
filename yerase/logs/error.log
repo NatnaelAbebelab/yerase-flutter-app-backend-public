@@ -25,3 +25,5 @@
 [2025-08-06 12:11:43,702] ERROR users.views - Error occurred while creating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6w” is not a valid UUID.']
 [2025-08-06 12:12:03,710] ERROR users.views - Error occurred while creating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6w” is not a valid UUID.']
 [2025-08-06 12:22:20,099] ERROR users.views - Error occurred while updating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6o” is not a valid UUID.']
+[2025-08-07 14:15:43,251] ERROR admins.views - Error occurred while creating audiobook: Invalid combination of format, subtype and endian
+[2025-08-18 18:57:11,248] ERROR admins.views - Error occurred while fetching ecommerce pcs: Cannot both declare the field 'items' and include it in the EcommercePCSerializer 'exclude' option. Remove the field or, if inherited from a parent serializer, disable with `items = None`.

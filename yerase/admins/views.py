@@ -3689,7 +3689,7 @@ class AppointmentView(APIView):
             appointments_list = paginator.paginate_appointment(request, appointments)
 
             return JsonResponse(
-                {"result": "success", "message": "Package PC list", "content": appointments_list.data},
+                {"result": "success", "message": "Appointment list", "content": appointments_list.data},
                 status=status.HTTP_200_OK)
 
         except Http404:
