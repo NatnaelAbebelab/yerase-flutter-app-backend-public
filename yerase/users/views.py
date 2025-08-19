@@ -2197,7 +2197,6 @@ class PackagePlanViewSet(viewsets.ViewSet):
     """
     Package plan view set
     """
-
     @extend_schema(
         tags=["Package Plan Users"],
         responses={200: dict},
@@ -2225,3 +2224,32 @@ class PackagePlanViewSet(viewsets.ViewSet):
             logger.error("Error occurred while fetching package plans: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while fetching package plans."},
                                 status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Package Plan Users"],
+        responses={200: dict},
+        description=""
+    )
+    @action(detail=False, methods=['get'], url_path='get-package-plan')
+    def get_package_plan(self, request):
+        try:
+            _id = request.query_params.get("id")
+            get_package_plan = get_object_or_404(Package.objects, _id=_id)
+
+            serializer = PackagePlanSerializer(get_package_plan).data
+
+            return JsonResponse({"result": "success", "message": "Package plan", "content": serializer},
+                                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Package plan is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching package plan: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching package plan."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
