@@ -239,6 +239,7 @@ class AddPackagePlanSerializer(serializers.Serializer):
     price = serializers.CharField(required=True)
     entities = serializers.ListField(required=True)
     offers = serializers.ListField(required=True)
+    duration = serializers.IntegerField(required=False)
 
 class UpdatePackagePlanSerializer(serializers.Serializer):
     _id = serializers.CharField(required=True)
@@ -247,6 +248,7 @@ class UpdatePackagePlanSerializer(serializers.Serializer):
     price = serializers.CharField(required=False, allow_blank=True)
     entities = serializers.ListField(required=False, allow_empty=True)
     offers = serializers.ListField(required=False, allow_empty=True)
+    duration = serializers.IntegerField(required=False, allow_null=True)
 
 class AddEcommercePCSerializer(serializers.Serializer):
     user_email = serializers.CharField(required=True)

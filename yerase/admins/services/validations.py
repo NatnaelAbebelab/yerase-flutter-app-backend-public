@@ -1,6 +1,8 @@
 import re
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.db.models.fields import return_None
+
 from accounts.models import CustomUser
 from accounts.enums import Roles
 
@@ -1120,6 +1122,8 @@ class PackagePlanValidator:
             self.validate_entities()
         if "offers" in self.fields:
             self.validate_offers()
+        if "duration" in self.fields:
+            self.validate_duration()
         return not self.errors
 
     def validate_name(self):
@@ -1169,6 +1173,13 @@ class PackagePlanValidator:
             return
         if self.null_validation and offers is None:
             self.errors["offers"] = "Offers cannot be null."
+
+    def validate_duration(self):
+        duration = self.data.get("duration")
+        try:
+            int(duration) if duration is not None or duration != "" else return_None()
+        except (ValueError, TypeError):
+            self.errors["duration"] = "Duration must be number."
 
 class EcommercePCValidator:
     def __init__(self, data, fields=None, empty_validation=False, null_validation=False):

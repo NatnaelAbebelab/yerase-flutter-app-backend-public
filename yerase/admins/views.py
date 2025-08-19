@@ -3157,12 +3157,13 @@ class PackagePlanView(APIView):
             name = serializer.validated_data["name"]
             overview = serializer.validated_data["overview"]
             price = serializer.validated_data["price"]
-            entities = serializer.validated_data["entities"] # course, meal plan, audio book
+            entities = serializer.validated_data["entities"] # course, meal plan, audiobook
             offers = serializer.validated_data["offers"]
+            duration = serializer.validated_data["duration"] # in days
 
             # Value Validation
             validator = PackagePlanValidator(serializer.validated_data,
-                                             fields=["name", "overview", "price", "entities", "offers"],
+                                             fields=["name", "overview", "price", "entities", "offers", "duration"],
                                              null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
@@ -3177,6 +3178,7 @@ class PackagePlanView(APIView):
                     price=price,
                     entity=entities,
                     offers=offers,
+                    duration=int(duration),
                     created_at=today,
                     updated_at=today
                 )
@@ -3215,13 +3217,14 @@ class PackagePlanView(APIView):
             price = serializer.validated_data["price"]
             entities = serializer.validated_data["entities"]
             offers = serializer.validated_data["offers"]
+            duration = serializer.validated_data["duration"] # in days
 
             if not _id:
                 raise UUIDException("Record is not found.")
 
             # Value Validation
             validator = PackagePlanValidator(serializer.validated_data,
-                                             fields=["name", "overview", "price", "entities", "offers"])
+                                             fields=["name", "overview", "price", "entities", "offers", "duration"])
 
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
@@ -3244,6 +3247,8 @@ class PackagePlanView(APIView):
                     package_plan.entities = entities
                 if offers != '':
                     package_plan.offers = offers
+                if duration != '':
+                    package_plan.duration = int(duration)
 
                 package_plan.save()
 

@@ -457,6 +457,7 @@ class Package(models.Model):
     offers = models.JSONField(default=list, blank=True)
     entity = models.JSONField(default=list, blank=True)
     price = models.CharField(max_length=255, blank=True, default='0')
+    duration = models.IntegerField(default=30)
     subscribers = models.CharField(max_length=255, blank=True, default='0')
     is_deleted = models.BooleanField(default=False)
     created_at = models.CharField(max_length=255, blank=True)
