@@ -178,10 +178,11 @@ class EcommercePCSerializer(serializers.ModelSerializer):
 class PackagePCSerializer(serializers.ModelSerializer):
     package = PackagePlanSerializer(read_only=True)
     method = serializers.SerializerMethodField()
+    user = CustomUserSerializer(read_only=True)  # nested user serializer
 
     class Meta:
         model = PackagePC
-        fields = [f.name for f in PackagePC._meta.fields] + ["method"]
+        fields = [f.name for f in PackagePC._meta.fields] + ["method", "user"]
 
     def get_method(self, obj):
         return obj.method.name if obj.method else None
