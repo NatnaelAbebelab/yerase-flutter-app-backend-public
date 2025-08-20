@@ -576,6 +576,35 @@ class CustomerAccountViewSet(viewsets.ViewSet):
             return JsonResponse({"result": "error", "message": "Error occurred while updating password"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        responses={200: dict},
+        description="Get Me"
+    )
+    @action(detail=False, methods=['get'], url_path='get-me')
+    @permission_classes([IsAuthenticated, role_required(["user"])])
+    def get_me(self, request):
+        try:
+            email = request.query_params.get("email")
+
+            with transaction.atomic():
+                # Data Validation
+                user = get_object_or_404(CustomUser.objects, email=email)
+                customer = get_object_or_404(CustomUsers.objects, user=user)
+
+                serializer = CustomerUsersAccountSerializer(customer).data
+
+                return JsonResponse(
+                    {"result": "success", "message": "Your profile data", "content": serializer},
+                    status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while getting me: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while getting me"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
 class AppointmentViewSet(viewsets.ViewSet):
     """
     Appointment view set to book virtual meeting
