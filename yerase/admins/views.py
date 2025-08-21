@@ -3542,7 +3542,7 @@ class PackagePCView(APIView):
             email = serializer.validated_data["email"] # user email which has an account
             method = serializer.validated_data["method"] # payment method id
             proof = serializer.validated_data["proof"]
-            print(type(proof))
+
             # Value Validation
             validator = PackagePCValidator(serializer.validated_data,
                                            fields=["package", "email", "method", "proof"],
@@ -3570,6 +3570,11 @@ class PackagePCView(APIView):
                 if not user:
                     raise ValueErrorException("User not found by the given email")
 
+                # Check whether the user is already subscribed to the package
+                user_package = PackagePC.objects.filter(Q(user=user) & Q(package=package_plan)).first()
+                if user_package:
+                    raise DuplicationException("The user is already subscribed to the package")
+
                 package_pc = PackagePC.objects.create(
                     package=package_plan,
                     user=user,
@@ -3587,7 +3592,7 @@ class PackagePCView(APIView):
                     {"result": "success", "message": "Package payment confirmation is added successfully.", "content": serializer},
                     status=status.HTTP_200_OK)
 
-        except (BaseClassSerializerException, ValidationException, ValueErrorException) as e:
+        except (BaseClassSerializerException, ValidationException, ValueErrorException, DuplicationException) as e:
             return JsonResponse({"result": "error", "message": e.message}, status=e.code)
         except Http404:
             return JsonResponse({"result": "error", "message": "Record is not found."},
