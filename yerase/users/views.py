@@ -406,7 +406,7 @@ class CustomerAccountViewSet(viewsets.ViewSet):
                 email.content_subtype = 'html'  # Specify that the email content is HTML
                 email.send()
 
-                return JsonResponse({"result": "success", "message": "You've reset your password"},
+                return JsonResponse({"result": "success", "message": "You've reset your password", "content": temp_password},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, ValueErrorException) as e:
