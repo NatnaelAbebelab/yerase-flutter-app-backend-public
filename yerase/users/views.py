@@ -2278,7 +2278,78 @@ class PackagePlanViewSet(viewsets.ViewSet):
             return JsonResponse({"result": "error", "message": "Error occurred while fetching package plan."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+class CustomerSubscriptionViewSet(viewsets.ViewSet):
+    """
+    1. Check if given user is subscribed to given package
+    2. Get package that given user is subscribed
+    """
+    @extend_schema(
+        tags=["Customer Subscription"],
+        responses={200: dict},
+        description=""
+    )
+    @action(detail=False, methods=['get'], url_path='check-subscription')
+    def check_subscription(self, request):
+        try:
+            customer = request.query_params.get("customer")
+            package = request.query_params.get("package")
 
+            get_package_plan = get_object_or_404(Package.objects, _id=package)
+            get_user = get_object_or_404(CustomUser.objects, id=customer)
 
+            # Check the given user is subscribed to the given package
+            package_pc = PackagePC.objects.filter(user=get_user, package=get_package_plan).first()
 
+            if not package_pc:
+                raise ValueErrorException("No subscription is found.")
 
+            serializer = PackagePCSerializer(package_pc).data
+
+            return JsonResponse({"result": "success", "message": "You're subscribed to the package.", "content": serializer},
+                                status=status.HTTP_200_OK)
+
+        except ValueErrorException as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Resource is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while checking subscription: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while checking subscription."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Customer Subscription"],
+        responses={200: dict},
+        description=""
+    )
+    @action(detail=False, methods=['get'], url_path='get-user-subscription')
+    def get_user_subscription(self, request):
+        try:
+            customer = request.query_params.get("customer")
+
+            get_user = get_object_or_404(CustomUser.objects, id=customer)
+
+            # Get user subscription for package pc
+            package_pc = PackagePC.objects.filter(user=get_user).first()
+
+            if not package_pc:
+                raise ValueErrorException("No subscription is found.")
+
+            serializer = PackagePCSerializer(package_pc).data
+
+            return JsonResponse(
+                {"result": "success", "message": "You've subscribed to a package.", "content": serializer},
+                status=status.HTTP_200_OK)
+
+        except ValueErrorException as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Resource is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while getting user subscription: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while getting user subscription."},
+                                status=status.HTTP_400_BAD_REQUEST)
