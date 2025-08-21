@@ -387,28 +387,18 @@ class CustomerAccountViewSet(viewsets.ViewSet):
                     raise ValueErrorException("Email address is not found")
 
                 user = get_object_or_404(CustomUser.objects, email=email.lower())
-                customer = get_object_or_404(CustomUsers.objects, user=user)
 
                 # generate password
                 temp_password = generate_temp_password(8)
-                while 1:
-                    reset_code = generate_otp()
-                    if CustomUsers.objects.filter(reset_code=reset_code).count() > 0:
-                        continue
-                    else:
-                        break
+
                 user.password = make_password(temp_password)
                 user.save()
-                customer.reset_code = reset_code
-                customer.save()
 
                 context = {
                     'fname': user.first_name.capitalize(),
-                    'lname': user.last_name.capitalize(),
-                    'email': user.email,
-                    'reset_link': 'http://localhost:8000/reset/' + reset_code # open app reset screen from URL
+                    'password': temp_password # open app reset screen from URL
                 }
-                template = get_template('add-customer-email-template.html')
+                template = get_template('customer-reset-password-template.html')
                 message_content = template.render(context)
                 subject = 'Reset Your Password'
                 message = message_content
