@@ -44,9 +44,25 @@ User = get_user_model()
 """
 These are class based view to execute operation
 """
-def generate_temp_password(length):
-    characters = string.ascii_letters + string.digits + string.punctuation
-    return ''.join(secrets.choice(characters) for _ in range(length))
+def generate_temp_password(length=8):
+    if length < 8:
+        raise ValueError("Password length must be at least 8")
+
+    # At least one from each required category
+    uppercase = secrets.choice(string.ascii_uppercase)
+    lowercase = secrets.choice(string.ascii_lowercase)
+    digit = secrets.choice(string.digits)
+    # Other characters can be from letters, digits, punctuation
+    others_length = length - 3
+    others = ''.join(secrets.choice(string.ascii_letters + string.digits + string.punctuation) for _ in range(others_length))
+
+    # Combine all parts
+    password_list = list(uppercase + lowercase + digit + others)
+
+    # Shuffle to avoid predictable placement
+    secrets.SystemRandom().shuffle(password_list)
+
+    return ''.join(password_list)
 def generate_otp():
     return str(random.randint(10000, 99999))
 
