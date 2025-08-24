@@ -400,7 +400,7 @@ class CustomerAccountViewSet(viewsets.ViewSet):
             with transaction.atomic():
                 # Data Validation
                 if not CustomUser.objects.filter(email=email.lower()).exists():
-                    raise ValueErrorException("Email address is not found")
+                    raise ValueErrorException("Email address is not registered")
 
                 user = get_object_or_404(CustomUser.objects, email=email.lower())
 
@@ -422,7 +422,7 @@ class CustomerAccountViewSet(viewsets.ViewSet):
                 email.content_subtype = 'html'  # Specify that the email content is HTML
                 email.send()
 
-                return JsonResponse({"result": "success", "message": "You've reset your password", "content": temp_password},
+                return JsonResponse({"result": "success", "message": "You've reset your password. Recovery password is sent to your inbox.", "content": temp_password},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValidationException, ValueErrorException) as e:
@@ -476,7 +476,7 @@ class CustomerAccountViewSet(viewsets.ViewSet):
                 if int(age) < 0 or int(age) < 12:
                     raise ValueErrorException("You must be above 12 years old")
 
-                if CustomUser.objects.filter(Q(email=email) & Q(username=email)).exists() and email != request.user:
+                if CustomUser.objects.filter(Q(email=email) & Q(username=email)).exclude(pk=request.user.pk).exists(): #  and email != request.user
                     raise ValueDuplicationException("Email is already in use")
 
                 user = get_object_or_404(CustomUser.objects, email=request.user)
@@ -2358,4 +2358,84 @@ class CustomerSubscriptionViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error("Error occurred while getting user subscription: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while getting user subscription."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Customer Subscription"],
+        request=PackagePCOrderSerializer,
+        responses={200: dict},
+        description=""
+    )
+    @action(detail=False, methods=['patch'], url_path='upgrade-subscription')
+    @permission_classes([IsAuthenticated, role_required(["user"])])
+    def upgrade_subscription(self, request):
+        serializer = PackagePCOrderSerializer(data=request.data)
+
+        """
+        In order to upgrade subscription, the user must have subscription.
+        """
+
+        try:
+            if not serializer.is_valid():
+                raise BaseClassSerializerException(serializer.errors)
+
+            email = serializer.validated_data.get("email").lower()
+            plan = serializer.validated_data.get("plan")
+            method = serializer.validated_data.get("method")
+            proof = serializer.validated_data.get("proof")
+
+            # Value Validation
+            validator = PackagePCValidator(serializer.validated_data,
+                                           fields=["email", "plan", "method", "proof"])
+            if not validator.is_valid():
+                raise ValidationException(validator.errors)
+
+            with transaction.atomic():
+                # Data Validation
+                user = get_object_or_404(CustomUser.objects, email=request.user)
+
+                if user.email != email.lower():
+                    raise ValueErrorException("Use your account email to process subscription")
+
+                package_plan = get_object_or_404(Package.objects, _id=plan)
+                payment_method = get_object_or_404(PaymentMethod.objects, _id=method)
+                package_pc = PackagePC.objects.filter(user=user).first()
+
+                if not package_pc:
+                    raise Http404
+
+                file_name = str(uuid.uuid4())
+                if proof is not None:
+                    file_path = os.path.join(settings.MEDIA_ROOT, "PC/package",
+                                             file_name + '.' + proof.name.split('.')[-1])
+                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                    with open(file_path, 'wb+') as destination:
+                        for chunk in proof.chunks():
+                            destination.write(chunk)
+                    file_name = file_name + '.' + proof.name.split('.')[-1]
+
+                # Update the package pc
+                package_pc.package = package_plan
+                package_pc.price = package_plan.price
+                package_pc.proof = file_name
+                package_pc.method = payment_method
+                package_pc.status = 'new' # because it is new payment
+                package_pc.updated_at = today
+                package_pc.save()
+
+                serializer = PackagePCSerializer(package_pc).data
+
+                return JsonResponse(
+                    {"result": "success", "message": "You've upgraded your subscription plan successfully.",
+                     "content": serializer},
+                    status=status.HTTP_200_OK)
+
+        except (BaseClassSerializerException, ValidationException, ValueErrorException, ValueDuplicationException) as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while upgrading subscription plan: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while upgrading subscription plan"},
                                 status=status.HTTP_400_BAD_REQUEST)
