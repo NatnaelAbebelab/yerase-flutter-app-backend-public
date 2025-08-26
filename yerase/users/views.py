@@ -1530,7 +1530,8 @@ class PaymentConfirmationViewSet(viewsets.ViewSet):
                 package_plan = get_object_or_404(Package.objects, _id=plan)
                 payment_method = get_object_or_404(PaymentMethod.objects, _id=method)
 
-                if PackagePC.objects.filter(Q(user=user) & Q(package=package_plan)).exists():
+                _status = ["declined", "rejected", "expired"]
+                if PackagePC.objects.filter(Q(user=user) & Q(package=package_plan) & ~Q(status__in=_status)).exists():
                     raise ValueDuplicationException("You have already subscribed to the package but your payment confirmation is on process.")
 
                 if PackagePC.objects.filter(Q(user=user) & Q(status='approved')).exists():
@@ -2342,6 +2343,16 @@ class CustomerSubscriptionViewSet(viewsets.ViewSet):
 
             if not package_pc:
                 raise ValueErrorException("No subscription is found.")
+
+            # check the date and duration
+            subscribed_package = get_object_or_404(Package.objects, _id=package_pc.package._id)
+            duration = subscribed_package.duration
+            subscription_date = datetime.strptime(package_pc.updated_at, "%Y-%m-%d").date()
+            expired = (today - subscription_date).days > duration
+
+            if expired:
+                package_pc.status = 'expired'
+                package_pc.save()
 
             serializer = PackagePCSerializer(package_pc).data
 

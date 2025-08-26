@@ -3615,7 +3615,7 @@ class PackagePCView(APIView):
                 raise BaseClassSerializerException(serializer.errors)
 
             _id = serializer.validated_data["_id"]
-            _status = serializer.validated_data["status"]
+            _status = serializer.validated_data["status"] # ['new', 'pending', 'approved', 'declined', 'rejected', 'expired']
 
             if not _id:
                 raise UUIDException("Record is not found.")
@@ -3625,8 +3625,10 @@ class PackagePCView(APIView):
                 if not package_pc:
                     raise Http404("Payment confirmation is not found.")
 
-                if _status:
+                pc_status = ["confirmed", "approved"]
+                if _status and package_pc.status not in pc_status:
                     package_pc.status = _status
+                    package_pc.updated_at = today
 
                 package_pc.save()
 
