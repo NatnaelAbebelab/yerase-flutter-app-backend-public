@@ -1392,7 +1392,7 @@ class PaymentConfirmationViewSet(viewsets.ViewSet):
 
             response = []
             for method in methods:
-                serializer = PaymentMethodSerializer(method, many=True).data
+                serializer = PaymentMethodSerializer(method).data
                 response.append(serializer)
 
             return JsonResponse(
