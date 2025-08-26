@@ -1,5 +1,4 @@
 from rest_framework_simplejwt.views import TokenRefreshView, TokenBlacklistView, TokenVerifyView
-from django.contrib.auth import views as auth_views
 from rest_framework.routers import DefaultRouter
 from django.urls import path
 from .views import *
