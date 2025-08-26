@@ -1392,7 +1392,7 @@ class PaymentConfirmationViewSet(viewsets.ViewSet):
 
             response = []
             for method in methods:
-                serializer = PaymentMethodSerializer(method).data
+                serializer = PaymentMethodSerializer(method, many=True).data
                 response.append(serializer)
 
             return JsonResponse(
@@ -1530,7 +1530,7 @@ class PaymentConfirmationViewSet(viewsets.ViewSet):
                 package_plan = get_object_or_404(Package.objects, _id=plan)
                 payment_method = get_object_or_404(PaymentMethod.objects, _id=method)
 
-                _status = ["declined", "rejected", "expired"]
+                _status = ["declined", "rejected", "expired"] # not ["new", "pending", "confirmed", "approved"]
                 if PackagePC.objects.filter(Q(user=user) & Q(package=package_plan) & ~Q(status__in=_status)).exists():
                     raise ValueDuplicationException("You have already subscribed to the package but your payment confirmation is on process.")
 
@@ -1571,6 +1571,37 @@ class PaymentConfirmationViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error("Error occurred while adding subscription PC: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while adding subscription PC"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Payment Confirmation Order"],
+        responses={200: dict},
+        description="Payment methods list"
+    )
+    @action(detail=False, methods=['get'], url_path='get-user-package-pcs')
+    def get_package_pcs(self, request):
+        try:
+            _id = request.query_params.get("id") # user id
+
+            # find the user
+            user = get_object_or_404(CustomUser.objects, id=_id)
+            package_pcs = PackagePC.objects.filter(user=user).all().order_by("-record_time")
+
+            if not package_pcs:
+                raise Http404
+
+            serializer = PackagePCSerializer(package_pcs, many=True).data
+
+            return JsonResponse(
+                {"result": "success", "message": "User pacakge payment confirmations", "content": serializer},
+                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "User package payment confirmation is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching user payment confirmation: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching user payment confirmation."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
 class CourseViewSet(viewsets.ViewSet):
@@ -2304,13 +2335,13 @@ class CustomerSubscriptionViewSet(viewsets.ViewSet):
             get_package_plan = get_object_or_404(Package.objects, _id=package)
             get_user = get_object_or_404(CustomUser.objects, id=customer)
 
-            # Check the given user is subscribed to the given package
-            package_pc = PackagePC.objects.filter(user=get_user, package=get_package_plan).first()
+            # Check the given user is subscribed to the given package => User can have multi package pc
+            package_pc = PackagePC.objects.filter(user=get_user, package=get_package_plan).order_by("-record_time")
 
             if not package_pc:
                 raise ValueErrorException("No subscription is found.")
 
-            serializer = PackagePCSerializer(package_pc).data
+            serializer = PackagePCSerializer(package_pc, many=True).data
 
             return JsonResponse({"result": "success", "message": "You're subscribed to the package.", "content": serializer},
                                 status=status.HTTP_200_OK)
@@ -2339,7 +2370,8 @@ class CustomerSubscriptionViewSet(viewsets.ViewSet):
             get_user = get_object_or_404(CustomUser.objects, id=customer)
 
             # Get user subscription for package pc
-            package_pc = PackagePC.objects.filter(user=get_user).first()
+            _status = ["new", "pending", "confirmed", "approved"]
+            package_pc = PackagePC.objects.filter(user=get_user, status__in=_status).first()
 
             if not package_pc:
                 raise ValueErrorException("No subscription is found.")
@@ -2410,7 +2442,9 @@ class CustomerSubscriptionViewSet(viewsets.ViewSet):
 
                 package_plan = get_object_or_404(Package.objects, _id=plan)
                 payment_method = get_object_or_404(PaymentMethod.objects, _id=method)
-                package_pc = PackagePC.objects.filter(user=user).first()
+
+                _status = ["new", "pending", "confirmed", "approved"]
+                package_pc = PackagePC.objects.filter(user=user, status__in=_status).first()
 
                 if not package_pc:
                     raise Http404
