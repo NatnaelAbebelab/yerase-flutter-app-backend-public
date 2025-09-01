@@ -20,6 +20,8 @@ from django.shortcuts import get_object_or_404
 from django.template.loader import get_template
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 
 from .serializers import *
 from .utility.token import get_tokens_for_user
@@ -610,6 +612,57 @@ class CustomerAccountViewSet(viewsets.ViewSet):
             logger.error("Error occurred while getting me: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while getting me"},
                                 status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        responses={200: dict},
+        description="Log out"
+    )
+    @action(detail=False, methods=['post'], url_path='log-out')
+    @permission_classes([IsAuthenticated, role_required(["user"])])
+    def log_out(self, request):
+        try:
+            refresh_token =  request.query_params.get("refresh")
+            if not refresh_token:
+                raise ValueErrorException("Refresh token is required")
+
+            # --- Blacklist refresh token ---
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+
+            # --- Blacklist access token (optional, stricter logout) ---
+            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+            if auth_header.startswith('Bearer '):
+                access_token_str = auth_header.split(' ')[1]
+                access = AccessToken(access_token_str)
+
+                # Manually create outstanding + blacklist entries for access token
+                outstanding, _ = OutstandingToken.objects.get_or_create(
+                    jti=access['jti'],
+                    user=request.user,
+                    defaults={
+                        "token": access_token_str,
+                        "created_at": timezone.now(),
+                        "expires_at": access.current_time + access.lifetime,
+                    },
+                )
+                BlacklistedToken.objects.get_or_create(token=outstanding)
+
+            logout(request)
+
+            return JsonResponse(
+                {"result": "success", "message": "You've logged out successfully", "content": ""},
+                status=status.HTTP_200_OK
+            )
+
+        except ValueErrorException as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+
+        except Exception as e:
+            logger.error("Error occurred while logging out: %s", e)
+            return JsonResponse(
+                {"result": "error", "message": "Error occurred while logging out"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 class AppointmentViewSet(viewsets.ViewSet):
     """
