@@ -311,8 +311,8 @@ class AdminAccountView(APIView):
             admin = get_object_or_404(CustomAdmin.objects, _id=_id)
             user = admin.admin
             if user.role != 'super_admin' and user.username != request.user:
+                # Deleting the user will automatically delete the related CustomAdmin
                 user.delete()
-                admin.delete()
                 return JsonResponse({"result": "success", "message": "Admin account is deleted successfully."},
                                 status=status.HTTP_200_OK)
             else:

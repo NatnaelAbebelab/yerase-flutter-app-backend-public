@@ -5,7 +5,7 @@ import secrets
 import string
 from datetime import date
 
-from django.db.models.fields import FloatField
+from django.db.models.fields import FloatField, DecimalField #
 from rest_framework import viewsets
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -14,12 +14,12 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.core.mail import EmailMessage
 from django.db import transaction
 from django.db.models.functions import Cast
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Case, When, Value #
 from django.http import JsonResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.template.loader import get_template
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import extend_schema
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 
@@ -833,6 +833,31 @@ class EcommerceViewSet(viewsets.ViewSet):
     def get_items(self, request):
         try:
             items = Item.objects.all().order_by("-record_time")
+
+            # Filters from query params
+            category = request.GET.get("category")
+            min_price = request.GET.get("min_price")
+            max_price = request.GET.get("max_price")
+
+            if category:
+                filter_category = get_object_or_404(ItemCategory.objects, _id=category)
+                items = items.filter(category=filter_category)
+
+            items = items.annotate(
+                safe_price=Case(
+                    When(price__regex=r'^[0-9]+(\.[0-9]+)?$',
+                         then=Cast("price", DecimalField(max_digits=10, decimal_places=2))),
+                    default=Value(0.00),  # fallback for invalid prices
+                    output_field=DecimalField(max_digits=10, decimal_places=2)
+                )
+            )
+
+            if min_price and max_price:
+                items = items.filter(safe_price__gte=min_price, safe_price__lte=max_price)
+            elif min_price:
+                items = items.filter(safe_price__gte=min_price)
+            elif max_price:
+                items = items.filter(safe_price__lte=max_price)
 
             if not items:
                 raise Http404
@@ -1699,6 +1724,30 @@ class CourseViewSet(viewsets.ViewSet):
         try:
             courses = Course.objects.all().order_by("-record_time")
 
+            # Filters from query params
+            category = request.GET.get("category")
+            min_duration = request.GET.get("min_duration")
+            max_duration = request.GET.get("max_duration")
+            is_certificated = request.GET.get("is_certificated")
+            language = request.GET.get("language")
+
+            if category:
+                filter_category = get_object_or_404(CourseCategory.objects, _id=category)
+                courses = courses.filter(category=filter_category)
+
+            if min_duration is not None and max_duration is not None:
+                courses = courses.filter(total_duration__gte=min_duration, total_duration__lte=max_duration)
+            elif min_duration is not None:
+                courses = courses.filter(total_duration__gte=min_duration)
+            elif max_duration is not None:
+                courses = courses.filter(total_duration__lte=max_duration)
+
+            if is_certificated:
+                courses = courses.filter(is_certificated__iexact=is_certificated)
+
+            if language:
+                courses = courses.filter(language__iexact=language) # use english, Amharic => for deployed
+
             if not courses:
                 raise Http404
 
@@ -1796,9 +1845,9 @@ class CourseViewSet(viewsets.ViewSet):
             for meal_plan in meal_plans:
                 temp_data = {
                     "_id": meal_plan._id,
-                    "name": capwords(meal_plans.name),
-                    "overview": capwords(meal_plans.overview),
-                    "course": get_course,
+                    "name": capwords(meal_plan.name),
+                    "overview": capwords(meal_plan.overview),
+                    "course": get_course._id,
                     "course_name": capwords(get_course.title),
                     "thumbnail": meal_plan.thumbnail,
                     "recipe_count": meal_plan.recipe_count
@@ -1832,7 +1881,22 @@ class MealPlanViewSet(viewsets.ViewSet):
         try:
             meal_plans = MealPlan.objects.all().order_by("-record_time")
 
-            if not meal_plans:
+            # Filters
+            course_id = request.GET.get("course_id")
+            min_recipes = request.GET.get("min_recipes")
+            max_recipes = request.GET.get("max_recipes")
+
+            if course_id:
+                course = get_object_or_404(Course.objects, _id=course_id)
+                meal_plans = meal_plans.filter(course=course)
+
+            if min_recipes:
+                meal_plans = meal_plans.filter(recipe_count__gte=int(min_recipes))
+
+            if max_recipes:
+                meal_plans = meal_plans.filter(recipe_count__lte=int(max_recipes))
+
+            if not meal_plans.exists():
                 raise Http404
 
             paginator = MealPlanDataPagination()
