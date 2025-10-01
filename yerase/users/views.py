@@ -915,8 +915,10 @@ class EcommerceViewSet(viewsets.ViewSet):
             color = category.color
 
             response["category"] = {
+                "id": category._id,
                 "name": category_name,
-                "color": color
+                "color": color,
+                "measurement": category.measurement,
             }
 
             # Get variations
@@ -938,7 +940,8 @@ class EcommerceViewSet(viewsets.ViewSet):
                 'has_quantity': 0, # False => it isn't stock avaiablity it is about range like 5-10 L or  5-10 kg
                 'type': 'free',
                 'min': 0,
-                'max': 0
+                'max': 0,
+                'sizes': {}
             }
 
             if category.measurement == 'l':
@@ -955,6 +958,7 @@ class EcommerceViewSet(viewsets.ViewSet):
                 measurement['has_quantity'] = 0
                 measurement['has_size'] = 1
                 measurement['type'] = 'Size'
+                measurement['sizes'] = item.sizes
             else:
                 logger.error(f"Unknown measurement type '{category.measurement}' for category {category.name}")
 
