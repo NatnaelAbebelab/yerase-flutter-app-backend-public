@@ -91,3 +91,9 @@ class CreatePlaylistSerializer(serializers.Serializer):
 class AddAudioToPlaylistSerializer(serializers.Serializer):
     _id = serializers.CharField(required=True)
     audios = serializers.ListField(required=True)
+
+class CalorieCalcInputSerializer(serializers.Serializer):
+    weight = serializers.FloatField(min_value=1)
+    height = serializers.FloatField(min_value=30)
+    age = serializers.IntegerField(min_value=1, max_value=120)
+    gender = serializers.ChoiceField(choices=(("male","male"), ("female","female")))

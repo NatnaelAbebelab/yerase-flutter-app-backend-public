@@ -13,6 +13,7 @@ router.register(r'meal-plans', MealPlanViewSet, basename='meal-plans')
 router.register(r'audiobook', AudioBookViewSet, basename='audiobook')
 router.register(r'package', PackagePlanViewSet, basename='package')
 router.register(r'subscription', CustomerSubscriptionViewSet, basename='customer-subscription')
+router.register(r'calorie', CalorieCalculatorViewSet, basename="calorie")
 #urlpatterns = router.urls
 
 

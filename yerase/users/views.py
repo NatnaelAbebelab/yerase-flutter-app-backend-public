@@ -4,6 +4,7 @@ import random
 import secrets
 import string
 from datetime import date
+from typing import Dict, Any
 
 from django.db.models.fields import FloatField, DecimalField #
 from rest_framework import viewsets
@@ -24,6 +25,7 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, Bl
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 
 from .serializers import *
+from .utility.nutrition import calculate_bmi, get_body_state, calculate_bmr, get_calorie_goals, calculate_macros, select_meals_for_goal
 from .utility.token import get_tokens_for_user
 from rest_framework.decorators import permission_classes, action
 from rest_framework.permissions import IsAuthenticated
@@ -2645,3 +2647,70 @@ class CustomerSubscriptionViewSet(viewsets.ViewSet):
             logger.error("Error occurred while upgrading subscription plan: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while upgrading subscription plan"},
                                 status=status.HTTP_400_BAD_REQUEST)
+
+class CalorieCalculatorViewSet(viewsets.ViewSet):
+    """
+    Handles calorie and meal suggestion calculations.
+    1. Calculate BMI, BMR, and body state
+    2. Generate calorie goals and meal suggestions (max 10 each)
+    """
+
+    @extend_schema(
+        tags=["Calorie Calculator"],
+        request=CalorieCalcInputSerializer,
+        responses={200: dict},
+        description="Calculate calorie goals (maintain/slight/extreme) and suggest meals (max 10 per goal)."
+    )
+    @action(detail=False, methods=["post"], url_path="calculate")
+    @permission_classes([IsAuthenticated, role_required(["user"])])
+    def calculate_calories(self, request):
+        try:
+            serializer = CalorieCalcInputSerializer(data=request.data)
+            if not serializer.is_valid():
+                raise ValueErrorException(serializer.errors)
+
+            data = serializer.validated_data
+            weight = data.get("weight")
+            height = data.get("height")
+            age = data.get("age")
+            gender = data.get("gender")
+
+            # --- Step 1: Calculate metrics ---
+            bmi = calculate_bmi(weight, height)
+            body_state = get_body_state(bmi)
+            bmr = calculate_bmr(weight, height, age, gender)
+            goals = get_calorie_goals(bmr, body_state)
+
+            # --- Step 2: Construct response ---
+            result_data: Dict[str, Any] = {
+                "BMI": bmi,
+                "bodyState": body_state
+            }
+
+            for key, cal in goals.items():
+                macros = calculate_macros(cal)
+                meals = select_meals_for_goal(cal, max_meals=10)
+                result_data[key] = {
+                    "calorie": int(cal),
+                    "macros": macros,
+                    "meals": meals
+                }
+
+            return JsonResponse(
+                {"result": "success", "message": "Calorie calculation successful.", "content": result_data},
+                status=status.HTTP_200_OK
+            )
+
+        except ValueErrorException as e:
+            return JsonResponse({"result": "error", "message": str(e.message)}, status=e.code)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Resource not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            logger.error("Error occurred while calculating calories: %s", e)
+            return JsonResponse(
+                {"result": "error", "message": "Error occurred while calculating calories."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
