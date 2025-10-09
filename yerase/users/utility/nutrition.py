@@ -19,7 +19,6 @@ def get_body_state(bmi: float) -> str:
         return "Overweight"
 
 def calculate_bmr(weight_kg: float, height_cm: float, age: int, gender: str) -> float:
-    # Mifflin-St Jeor
     gender = gender.lower()
     if gender not in ("male", "female"):
         raise ValueError("gender must be 'male' or 'female'")
