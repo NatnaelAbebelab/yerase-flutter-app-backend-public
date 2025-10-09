@@ -293,3 +293,34 @@ class UpdateLocalizationSerializer(serializers.Serializer):
     content_key = serializers.CharField(required=False, allow_blank=True)
     content_value = serializers.CharField(required=False, allow_blank=True)
     entity = serializers.CharField(required=False, allow_blank=True)
+
+class AddMealCategorySerializer(serializers.Serializer):
+    name = serializers.CharField(required=True)
+    description = serializers.CharField(allow_blank=True)
+
+class UpdateMealCategorySerializer(serializers.Serializer):
+    _id = serializers.CharField(required=False, allow_blank=True)
+    name = serializers.CharField(required=False, allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+
+class AddMealSerializer(serializers.Serializer):
+    category = serializers.CharField(required=True)
+    name = serializers.CharField(required=True)
+    calories = serializers.IntegerField(required=True)
+    description = serializers.CharField(allow_blank=True)
+    image = serializers.FileField(required=True)
+    protein = serializers.FloatField(required=True)
+    carbs = serializers.FloatField(required=True)
+    fats = serializers.FloatField(required=True)
+
+class UpdateMealSerializer(serializers.Serializer):
+    _id = serializers.CharField(required=True)
+    category = serializers.CharField(required=False)
+    name = serializers.CharField(required=False)
+    calories = serializers.IntegerField(required=False)
+    description = serializers.CharField(required=False)
+    image = serializers.FileField(required=False)
+    protein = serializers.FloatField(required=False)
+    carbs = serializers.FloatField(required=False)
+    fats = serializers.FloatField(required=False)
+

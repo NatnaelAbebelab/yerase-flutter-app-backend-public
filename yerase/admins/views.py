@@ -22,6 +22,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework.decorators import permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
+
 from utils.exceptions import *
 from utils.permissions import role_required
 from utils.generateOrderId import OrderIDGenerator
@@ -3448,8 +3449,19 @@ class EcommercePCView(APIView):
 
                 if _status:
                     ecommerce_pc.status = _status
-
                 ecommerce_pc.save()
+
+                # clear user's cart after PC is confirmed or approved
+                if _status.lower() in ["approved", "confirmed"]:
+                    cart = Cart.objects.filter(owner=ecommerce_pc.user_name, is_deleted=False).first()
+                    if cart:
+                        cart.items = []
+                        cart.quantity = []
+                        cart.color = []
+                        cart.measurement = []
+                        cart.total_price = "0.00"
+                        cart.save()
+                        logger.info(f"Cart cleared for user {ecommerce_pc.user_name.email}")
 
                 serializer = EcommercePCSerializer(ecommerce_pc).data
 
@@ -3989,4 +4001,364 @@ class LocalizationView(APIView):
         except Exception as e:
             logger.error("Error occurred while deleting localization: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while deleting localization"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+@permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
+class MealCategoryView(APIView):
+    @extend_schema(
+        tags=["Meal Category"],
+        responses={200: dict}
+    )
+    def get(self, request):
+        try:
+            meal_categories = MealCategory.objects.all().order_by("-record_time")
+
+            if not meal_categories:
+                raise Http404
+
+            serializer = MealCategorySerializer(meal_categories, many=True)
+
+            return JsonResponse(
+                {"result": "success", "message": "Meal categories list", "content": serializer.data},
+                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Meal categories are not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching Meal categories: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching Meal categories."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Meal Category"],
+        request=AddMealCategorySerializer,
+        responses={200: dict}
+    )
+    def post(self, request):
+        serializer = AddMealCategorySerializer(data=request.data)
+
+        try:
+            if not serializer.is_valid():
+                raise BaseClassSerializerException(serializer.errors)
+
+            name = serializer.validated_data["name"]
+            description = serializer.validated_data["description"]
+
+            if not name:
+                raise ValidationException("Please provide meal category.")
+
+            with transaction.atomic():
+                if MealCategory.objects.filter(name=name.lower()).exists():
+                    raise ValueDuplicationException("Category name is already found.")
+
+                meal_category = MealCategory.objects.create(
+                    name=name.lower(),
+                    description=description,
+                    created_at=today,
+                    updated_at=today
+                )
+                meal_category.save()
+
+                serializer = MealCategorySerializer(meal_category)
+
+                return JsonResponse({"result": "success", "message": "Localization is created successfully.", "content": serializer.data},
+                                    status=status.HTTP_200_OK)
+
+        except (BaseClassSerializerException, ValueDuplicationException, ValidationException) as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+
+        except Exception as e:
+            logger.error("Error occurred while creating meal category: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while meal category"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Meal Category"],
+        request=UpdateMealCategorySerializer,
+        responses={200: dict}
+    )
+    def patch(self, request):
+        serializer = UpdateMealCategorySerializer(data=request.data)
+
+        try:
+            if not serializer.is_valid():
+                raise BaseClassSerializerException(serializer.errors)
+
+            _id = serializer.validated_data.get("_id")
+            name = serializer.validated_data.get("name")
+            description = serializer.validated_data.get("description")
+
+            if not _id:
+                raise UUIDException("Record is not found.")
+
+            with transaction.atomic():
+                meal_category = get_object_or_404(MealCategory.objects, _id=_id)
+
+                if name:
+                    if MealCategory.objects.filter(Q(name=name.lower()) & ~Q(_id=_id)).exists():
+                        raise ValueDuplicationException("Category name is already used.")
+                    meal_category.name = name.lower()
+                if description:
+                    meal_category.description = description
+
+                meal_category.updated_at = today
+                meal_category.save()
+
+                serializer = MealCategorySerializer(meal_category)
+
+                return JsonResponse(
+                    {"result": "success", "message": "Meal category is updated successfully.", "content": serializer.data},
+                    status=status.HTTP_200_OK)
+
+        except (BaseClassSerializerException, ValueDuplicationException, UUIDException) as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Meal category is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            logger.error("Error occurred while updating meal category: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while meal category"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Meal Category"],
+        parameters=[OpenApiParameter(name="_id", required=True, type=str, location=OpenApiParameter.PATH)],
+        responses={200: dict}
+    )
+    def delete(self, request):
+        _id = request.data.get("_id")
+        try:
+            if not _id:
+                raise UUIDException("Record is not found.")
+
+            meal_category = get_object_or_404(MealCategory.objects, _id=_id)
+            meal_category.delete()
+
+            return JsonResponse({"result": "success", "message": "Meal category is deleted successfully."},
+                                status=status.HTTP_200_OK)
+
+        except UUIDException as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Meal category record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while deleting meal category: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while deleting meal category"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+@permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
+class MealView(APIView):
+    @extend_schema(
+        tags=["Meals"],
+        responses={200: dict}
+    )
+    def get(self, request):
+        try:
+            meals = Meal.objects.all().order_by("-record_time")
+
+            if not meals:
+                raise Http404
+
+            serializer = MealSerializer(meals, many=True)
+
+            return JsonResponse(
+                {"result": "success", "message": "Meals list", "content": serializer.data},
+                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Meal categories are not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching Meal categories: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching Meal categories."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Meals"],
+        request=AddMealSerializer,
+        responses={200: dict}
+    )
+    def post(self, request):
+        serializer = AddMealSerializer(data=request.data)
+
+        try:
+            if not serializer.is_valid():
+                raise BaseClassSerializerException(serializer.errors)
+
+            _category = serializer.validated_data["category"]
+            name = serializer.validated_data["name"]
+            calories = serializer.validated_data["calories"]
+            description = serializer.validated_data["description"]
+            image = serializer.validated_data["image"]
+            protein = serializer.validated_data["protein"]
+            carbs = serializer.validated_data["carbs"]
+            fats = serializer.validated_data["fats"]
+
+            if not _category:
+                raise ValidationException("Please provide meal category.")
+            if not name:
+                raise ValidationException("Please provide meal category.")
+            if not calories:
+                raise ValidationException("Please provide meal calorie count.")
+            if not protein:
+                raise ValidationException("Please provide meal protein count.")
+            if not carbs:
+                raise ValidationException("Please provide meal carbs count.")
+            if not fats:
+                raise ValidationException("Please provide meal fats count.")
+
+            with transaction.atomic():
+                # Check meal category
+                meal_category = get_object_or_404(MealCategory.objects, _id=_category)
+
+                if Meal.objects.filter(name=name.lower()).exists():
+                    raise ValueDuplicationException("Meal name is already used.")
+
+                # save image if given
+                file_name = ''
+                if image is not None:
+                    file_name = str(uuid.uuid4())
+                    file_path = os.path.join(settings.MEDIA_ROOT, "meal/calorie",
+                                             file_name + '.' + image.name.split('.')[-1])
+                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                    with open(file_path, 'wb+') as destination:
+                        for chunk in image.chunks():
+                            destination.write(chunk)
+                    file_name = file_name + '.' + image.name.split('.')[-1]
+
+                # Create meal object
+                meal = Meal.objects.create(
+                    category=meal_category,
+                    name=name.lower(),
+                    calories=int(calories),
+                    description=description,
+                    image=file_name,
+                    protein=float(protein),
+                    carbs=float(carbs),
+                    fats=float(fats),
+                    created_at=today,
+                    updated_at=today,
+                )
+
+                meal.save()
+
+                serializer = MealSerializer(meal)
+
+                return JsonResponse(
+                    {"result": "success", "message": "Meal is created successfully.", "content": serializer.data},
+                    status=status.HTTP_200_OK)
+
+        except (BaseClassSerializerException, ValueDuplicationException, ValidationException) as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+
+        except Exception as e:
+            logger.error("Error occurred while creating meal: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while creating meal"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Meals"],
+        request=UpdateMealSerializer,
+        responses={200: dict}
+    )
+    def patch(self, request):
+        serializer = UpdateMealSerializer(data=request.data)
+
+        try:
+            if not serializer.is_valid():
+                raise BaseClassSerializerException(serializer.errors)
+
+            _id = serializer.validated_data.get("_id")
+            _category = serializer.validated_data.get("category")
+            name = serializer.validated_data.get("name")
+            calories = serializer.validated_data.get("calories")
+            description = serializer.validated_data.get("description")
+            image = serializer.validated_data.get("image")
+            protein = serializer.validated_data.get("protein")
+            carbs = serializer.validated_data.get("carbs")
+            fats = serializer.validated_data.get("fats")
+
+            if not _id:
+                raise UUIDException("Record is not found.")
+
+            with transaction.atomic():
+                #Check meal
+                meal = get_object_or_404(Meal.objects, _id=_id)
+
+                if image is not None:
+                    file_name = str(uuid.uuid4())
+                    file_path = os.path.join(settings.MEDIA_ROOT, "meal/calorie",
+                                             file_name + '.' + image.name.split('.')[-1])
+                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                    with open(file_path, 'wb+') as destination:
+                        for chunk in image.chunks():
+                            destination.write(chunk)
+                    file_name = file_name + '.' + image.name.split('.')[-1]
+                    meal.image = file_name
+
+                if _category:
+                    meal_category = get_object_or_404(MealCategory.objects, _id=_category)
+                    meal.category = meal_category
+                if name:
+                    if Meal.objects.filter(Q(name=name.lower()), ~Q(_id=_id)).exists():
+                        raise ValueDuplicationException("Name is already used.")
+                    meal.name = name.lower()
+                if calories:
+                    meal.calories = int(calories)
+                if description:
+                    meal.description = description
+                if protein:
+                    meal.protein = float(protein)
+                if carbs:
+                    meal.carbs = float(carbs)
+                if fats:
+                    meal.fats = float(fats)
+
+                meal.updated_at = today
+                meal.save()
+
+                serializer = MealSerializer(meal)
+
+                return JsonResponse(
+                    {"result": "success", "message": "Meal is updated successfully.", "content": serializer.data},
+                    status=status.HTTP_200_OK)
+
+        except (BaseClassSerializerException, ValueDuplicationException, ValidationException) as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+
+        except Exception as e:
+            logger.error("Error occurred while updating meal: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while updating meal"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["Meals"],
+        parameters=[OpenApiParameter(name="_id", required=True, type=str, location=OpenApiParameter.PATH)],
+        responses={200: dict}
+    )
+    def delete(self, request):
+        _id = request.data.get("_id")
+        try:
+            if not _id:
+                raise UUIDException("Record is not found.")
+
+            meal = get_object_or_404(Meal.objects, _id=_id)
+            meal.delete()
+
+            return JsonResponse({"result": "success", "message": "Meal is deleted successfully."},
+                                status=status.HTTP_200_OK)
+
+        except UUIDException as e:
+            return JsonResponse({"result": "error", "message": e.message}, status=e.code)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Meal record is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while deleting meal: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while deleting meal"},
                                 status=status.HTTP_400_BAD_REQUEST)

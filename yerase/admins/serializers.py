@@ -200,3 +200,18 @@ class LocalizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Localization
         fields = '__all__'
+
+class MealCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MealCategory
+        fields = '__all__'
+
+class MealSerializer(serializers.ModelSerializer):
+    category = MealCategorySerializer(read_only=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        queryset=MealCategory.objects.all(), source='category', write_only=True
+    )
+
+    class Meta:
+        model = Meal
+        fields = '__all__'

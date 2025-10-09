@@ -41,5 +41,9 @@ urlpatterns = [
 
     path('appointment/', AppointmentView.as_view(), name='appointment'),
 
-    path('localization/', LocalizationView.as_view(), name='localization')
+    path('localization/', LocalizationView.as_view(), name='localization'),
+
+    path('meal-category/', MealCategoryView.as_view(), name='meal-category'),
+
+    path('meals/', MealView.as_view(), name='meals')
 ]

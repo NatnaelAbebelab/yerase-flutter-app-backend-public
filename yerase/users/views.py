@@ -1000,7 +1000,7 @@ class EcommerceViewSet(viewsets.ViewSet):
 
             # Get current user
             if user:
-                current_user_review = item_review.filter(Q(active_user=user) & Q(status='publish')).first()
+                current_user_review = item_review.filter(Q(active_user=user)).first() #& Q(status='publish')
                 if current_user_review:
                     u = get_object_or_404(CustomUsers.objects, user=user)
                     response["user_review"] = {
@@ -1420,7 +1420,7 @@ class EcommerceViewSet(viewsets.ViewSet):
                 if int(rate) < 0 or int(rate) > 5:
                     raise ValueErrorException("Review rate is invalid")
 
-                user_review = ItemReview.objects.filter(active_user=user).first()
+                user_review = ItemReview.objects.filter(active_user=user, item=selected_item).first()
                 if user_review:
                     if rate != '':
                         user_review.rate = rate
@@ -1561,6 +1561,14 @@ class PaymentConfirmationViewSet(viewsets.ViewSet):
                 )
                 pc.save()
 
+                # Clear the cart since it is in checkout state
+                cart.items = []
+                cart.quantity = []
+                cart.color = []
+                cart.measurement = []
+                cart.total_price = "0.00"
+                cart.save()
+
                 serializer = EcommercePCSerializer(pc).data
 
                 return JsonResponse({"result": "success", "message": "Payment confirmation is added successfully", "content": serializer},
@@ -1685,6 +1693,38 @@ class PaymentConfirmationViewSet(viewsets.ViewSet):
             logger.error("Error occurred while fetching user payment confirmation: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while fetching user payment confirmation."},
                                 status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        tags=["E-commerce Payment Confirmation Order"],
+        responses={200: dict},
+        description="Payment methods list"
+    )
+    @action(detail=False, methods=['get'], url_path='get-user-ecommerce-pcs')
+    def get_ecommerce_pcs(self, request):
+        try:
+            _id = request.query_params.get("id")  # user id
+
+            # find the user
+            user = get_object_or_404(CustomUser.objects, id=_id)
+            ecommerce_pcs = EcommercePC.objects.filter(user_name=user).all().order_by("-record_time")
+
+            if not ecommerce_pcs:
+                raise Http404
+
+            serializer = EcommercePCSerializer(ecommerce_pcs, many=True).data
+
+            return JsonResponse(
+                {"result": "success", "message": "User e-commerce payment confirmations", "content": serializer},
+                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "User e-commerce payment confirmation is not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching user payment confirmation: %s", e)
+            return JsonResponse(
+                {"result": "error", "message": "Error occurred while fetching user payment confirmation."},
+                status=status.HTTP_400_BAD_REQUEST)
 
 class CourseViewSet(viewsets.ViewSet):
     """

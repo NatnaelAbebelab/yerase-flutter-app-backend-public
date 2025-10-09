@@ -596,3 +596,59 @@ class Localization(models.Model):
         self.is_deleted = False
         self.updated_at = datetime.today().strftime('%Y-%m-%d')
         self.save()
+
+class MealCategory(models.Model):
+    _id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    is_deleted = models.BooleanField(default=False)
+    created_at = models.CharField(max_length=255, blank=True)
+    updated_at = models.CharField(max_length=255, blank=True)
+    record_time = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    objects = ItemManager()
+    all_objects = models.Manager()
+
+    def delete(self, *args, **kwargs):
+        self.is_deleted = True
+        self.updated_at = datetime.today().strftime('%Y-%m-%d')
+        self.save()
+
+    def restore(self):
+        self.is_deleted = False
+        self.updated_at = datetime.today().strftime('%Y-%m-%d')
+        self.save()
+
+class Meal(models.Model):
+    _id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    category = models.ForeignKey(MealCategory, on_delete=models.CASCADE, related_name='meals')
+    name = models.CharField(max_length=200)
+    calories = models.IntegerField()
+    description = models.TextField(blank=True)
+    image = models.CharField(max_length=255, blank=True)
+    protein = models.FloatField(blank=True, null=True)
+    carbs = models.FloatField(blank=True, null=True)
+    fats = models.FloatField(blank=True, null=True)
+    is_deleted = models.BooleanField(default=False)
+    created_at = models.CharField(max_length=255, blank=True)
+    updated_at = models.CharField(max_length=255, blank=True)
+    record_time = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    objects = ItemManager()
+    all_objects = models.Manager()
+
+    def delete(self, *args, **kwargs):
+        self.is_deleted = True
+        self.updated_at = datetime.today().strftime('%Y-%m-%d')
+        self.save()
+
+    def restore(self):
+        self.is_deleted = False
+        self.updated_at = datetime.today().strftime('%Y-%m-%d')
+        self.save()
