@@ -45,7 +45,6 @@ ROLE_CHOICES = ["super_admin", "weight_man", "purchaser", "inspector", "purchase
 This is views for activities or tasks performed by admins
 """
 
-
 def generate_temp_password(length):
     characters = string.ascii_letters + string.digits + string.punctuation
     return ''.join(secrets.choice(characters) for _ in range(length))
@@ -101,7 +100,6 @@ class AdminLoginView(APIView):
             logger.error("Error occurred while login admin: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while sign in admin."},
                                 status=status.HTTP_400_BAD_REQUEST)
-
 
 class AdminLogoutView(APIView):
     """
@@ -329,7 +327,6 @@ class AdminAccountView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while deleting admin"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-
 class ResetPasswordView(APIView):
     """
     Class-based view to change profile settings
@@ -373,12 +370,32 @@ class ResetPasswordView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while resetting password"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class AdminUpdateProfileView(APIView):
     """
     Class-based view to update admin profile
     """
+
+    @extend_schema(
+        tags=["Admin Account"],
+        responses={200: dict}
+    )
+    def get(self, request):
+        try:
+            admin_user = get_object_or_404(CustomUser.objects, username=request.user)
+            admin = get_object_or_404(CustomAdmin.objects, admin=admin_user)
+
+            serializer = UserAdminSerializer(admin).data
+            return JsonResponse({"result": "success", "message": "Admins list", "content": serializer},
+                                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "Admins users not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching admins: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching admins."},
+                                status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Admin Account"],
@@ -392,11 +409,11 @@ class AdminUpdateProfileView(APIView):
             if not serializer.is_valid():
                 raise BaseClassSerializerException(serializer.errors)
 
-            profile_photo = serializer.validated_data["profile"]
-            fname = serializer.validated_data["fname"]
-            lname = serializer.validated_data["lname"]
-            email = serializer.validated_data["email"].lower()
-            phone = serializer.validated_data["phone"]
+            profile_photo = serializer.validated_data.get("profile")
+            fname = serializer.validated_data.get("fname")
+            lname = serializer.validated_data.get("lname")
+            email = serializer.validated_data.get("email").lower()
+            phone = serializer.validated_data.get("phone")
 
             # Value Validation
             validator = AdminAccountDataValidator(serializer.validated_data,
@@ -450,7 +467,6 @@ class AdminUpdateProfileView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while updating profile"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-
 @permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class AdminChangePasswordView(APIView):
     """
@@ -473,7 +489,7 @@ class AdminChangePasswordView(APIView):
             new_password = serializer.validated_data["new_password"]
 
             # Value Validation
-            validator = AdminAccountDataValidator(serializer.validated_data, fields=["password"], null_validation=True)
+            validator = AdminAccountDataValidator(serializer.validated_data, fields=["new_password"], null_validation=True)
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
@@ -498,8 +514,6 @@ class AdminChangePasswordView(APIView):
             return JsonResponse({"result": "error", "message": "Error occurred while changing password"},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-
-@permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
 class AdminRecoverPasswordView(APIView):
     """
     Class view to recover password
@@ -524,11 +538,8 @@ class AdminRecoverPasswordView(APIView):
             if not validator.is_valid():
                 raise ValidationException(validator.errors)
 
-            current_user = get_object_or_404(CustomUser.objects, username=request.user)
-            current_admin = get_object_or_404(CustomAdmin.objects, admin=current_user)
-
-            if CustomUser.objects.filter(~Q(id=current_user.id) & Q(email=email)).exists():
-                raise EmailDuplicationException("Email is already used.")
+            admin_user = get_object_or_404(CustomUser.objects, username=email.lower())
+            admin = get_object_or_404(CustomAdmin.objects, admin=admin_user)
 
             temp_password = generate_temp_password(8)
             otp_code = '0'
@@ -539,17 +550,17 @@ class AdminRecoverPasswordView(APIView):
                 else:
                     break
 
-            current_admin.otp_code = otp_code
-            current_admin.save()
+            admin.otp_code = otp_code
+            admin.save()
 
-            current_user.password = make_password(temp_password)
-            current_user.save()
+            admin_user.password = make_password(temp_password)
+            admin_user.save()
 
             # send email
             context = {
-                'fname': current_user.first_name.capitalize(),
-                'lname': current_user.last_name.capitalize(),
-                'email': current_user.email,
+                'fname': admin_user.first_name.capitalize(),
+                'lname': admin_user.last_name.capitalize(),
+                'email': admin_user.email,
                 'otp_code': otp_code
             }
             template = get_template('add-user-email-template.html')

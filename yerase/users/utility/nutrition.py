@@ -37,7 +37,7 @@ def calculate_macros(calories: int) -> Dict[str, float]:
         "fats_g": round(fats_cal / 9, 1),
     }
 
-def get_calorie_goals(bmr: int, body_state: str) -> Dict[str, int]:
+def get_calorie_goals(bmr: float, body_state: str) -> Dict[str, int]:
     """
     Return a dict of goals (key->calories).
     We'll map keys to the names you requested later.

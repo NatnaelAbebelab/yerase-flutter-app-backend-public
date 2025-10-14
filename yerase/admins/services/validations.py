@@ -9,7 +9,7 @@ from accounts.enums import Roles
 class AdminAccountDataValidator:
     def __init__(self, data, fields=None, exclude_user_id=None, empty_validation=None, null_validation=None):
         self.data = data
-        self.fields = fields or ["fname", "lname", "email", "phone", "role", "password"]
+        self.fields = fields or ["fname", "lname", "email", "phone", "role", "password", "new_password"]
         self.exclude_user_id = exclude_user_id
         self.empty_validation = empty_validation
         self.null_validation = null_validation
@@ -28,6 +28,8 @@ class AdminAccountDataValidator:
             self.validate_role()
         if "password" in self.fields:
             self.validate_password()
+        if "new_password" in self.fields:
+            self.validate_new_password()
         return not bool(self.errors)
 
     def validate_fname(self):
@@ -101,6 +103,28 @@ class AdminAccountDataValidator:
     def validate_password(self):
         password = self.data.get("password")
         
+        if self.empty_validation and not password:
+            self.errors["password"] = "Phone is required."
+            return
+        if self.null_validation and not password:
+            self.errors["password"] = "Phone is required."
+            return
+        if self.empty_validation and len(password) < 8:
+            self.errors["password"] = "Password must be at least 8 characters long."
+            return
+        elif not re.search(r'[a-z]', password):
+            self.errors["password"] = "Password must contain at least one lowercase letter."
+            return
+        elif not re.search(r'[A-Z]', password):
+            self.errors["password"] = "Password must contain at least one uppercase letter."
+            return
+        elif not re.search(r'\d', password):
+            self.errors["password"] = "Password must contain at least one digit."
+            return
+
+    def validate_new_password(self):
+        password = self.data.get("new_password")
+
         if self.empty_validation and not password:
             self.errors["password"] = "Phone is required."
             return
