@@ -993,6 +993,12 @@ class CourseView(APIView):
                 raise UUIDException("Record is not found.")
 
             course = get_object_or_404(Course.objects, _id=_id)
+            category = course.category
+
+            count = max(int(category.assigned_course) - 1, 0)  # prevent negatives
+            category.assigned_course = str(count)
+            category.save(update_fields=["assigned_course"])
+
             course.delete()
 
             return JsonResponse({"result": "success", "message": "Course is deleted successfully."},
