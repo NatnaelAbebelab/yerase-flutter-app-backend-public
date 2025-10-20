@@ -1177,8 +1177,15 @@ class CourseLessonView(APIView):
                     if response.status_code == 200:
                         data = response.json()
                         duration = data.get("duration", 0)
-                    duration_validation = CourseLessonDataValidator(serializer.validated_data, fields=["duration"],
-                                                                    null_validation=True)
+
+                    validated_data = serializer.validated_data.copy()
+                    validated_data["duration"] = duration
+
+                    duration_validation = CourseLessonDataValidator(
+                        validated_data,
+                        fields=["duration"],
+                        null_validation=True
+                    )
                     if not duration_validation.is_valid():
                         raise ValidationException(duration_validation.errors)
                     lesson.video_id = video_id
