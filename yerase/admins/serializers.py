@@ -82,7 +82,14 @@ class MealPlanRecipeSerializer(serializers.ModelSerializer):
         fields = [f.name for f in MealPlanRecipe._meta.fields] + ["meal"]
 
     def get_meal(self, obj):
-        return obj.meal.name if obj.meal else None
+        meal = obj.meal
+        if meal:
+            # Return a dictionary of relevant fields
+            return {
+                "id": meal._id,
+                "name": meal.name,
+            }
+        return None
 
 class AudiobookCategorySerializer(serializers.ModelSerializer):
     class Meta:

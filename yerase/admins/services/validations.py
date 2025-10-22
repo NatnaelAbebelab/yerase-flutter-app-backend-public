@@ -1036,12 +1036,12 @@ class ItemValidator:
         return
 
     def validate_quantity(self):
-        price = self.data.get("quantity")
+        price = self.data.get("variation_qty")
         if self.empty_validation and price in [None, ""]:
-            self.errors["quantity"] = "Quantity is required."
+            self.errors["variation_qty"] = "Quantity is required."
             return
         if self.null_validation and price is None:
-            self.errors["quantity"] = "Quantity cannot be null."
+            self.errors["variation_qty"] = "Quantity cannot be null."
         return
 
     def validate_variation_img(self):
