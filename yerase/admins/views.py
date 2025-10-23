@@ -2761,21 +2761,38 @@ class ItemView(APIView):
                     item.thumbnail = file_name
 
                 # Handle variations
-                variation_img_file_names = []
-                variation_color_codes = []
-                variation_qty_count = []
+                variation_img_file_names = item.variation_img
+                variation_color_codes = item.variation_color
+                variation_qty_count = item.variation_qty
 
                 if variation_img:
                     for idx, img in enumerate(variation_img):
-                        file_name = f"{uuid.uuid4()}.{img.name.split('.')[-1]}"
-                        file_path = os.path.join(settings.MEDIA_ROOT, "item/ecommerce-variation", file_name)
-                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                        with open(file_path, 'wb+') as destination:
-                            for chunk in img.chunks():
-                                destination.write(chunk)
-                        variation_img_file_names.append(file_name)
-                        variation_color_codes.append(variation_color[idx])
-                        variation_qty_count.append(variation_qty[idx])
+                        if hasattr(img, 'chunks'):
+                            file_name = f"{uuid.uuid4()}.{img.name.split('.')[-1]}"
+                            file_path = os.path.join(settings.MEDIA_ROOT, "item/ecommerce-variation", file_name)
+                            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                            with open(file_path, 'wb+') as destination:
+                                for chunk in img.chunks():
+                                    destination.write(chunk)
+                            variation_img_file_names.append(file_name)
+
+                        if variation_color and idx < len(variation_color):
+                            if idx < len(variation_color_codes):
+                                variation_color_codes[idx] = variation_color[idx]
+                            else:
+                                variation_color_codes.append(variation_color[idx])
+                        else:
+                            if idx >= len(variation_color_codes):
+                                variation_color_codes.append("")
+
+                        if variation_qty and idx < len(variation_qty):
+                            if idx < len(variation_qty_count):
+                                variation_qty_count[idx] = variation_qty[idx]
+                            else:
+                                variation_qty_count.append(variation_qty[idx])
+                        else:
+                            if idx >= len(variation_qty_count):
+                                variation_qty_count.append("0")
 
                     item.variation_img = variation_img_file_names
                     item.variation_color = variation_color_codes
