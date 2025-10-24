@@ -3285,9 +3285,9 @@ class PackagePlanView(APIView):
                     package_plan.overview = overview
                 if price != '':
                     package_plan.price = price
-                if entities != '':
-                    package_plan.entities = entities
-                if offers != '':
+                if entities is not None:
+                    package_plan.entity = entities
+                if offers is not None:
                     package_plan.offers = offers
                 if duration != '':
                     package_plan.duration = int(duration)
