@@ -3679,7 +3679,8 @@ class PackagePCView(APIView):
                     raise Http404("Payment confirmation is not found.")
 
                 pc_status = ["confirmed", "approved"]
-                if _status and package_pc.status not in pc_status:
+                #and package_pc.status not in pc_status
+                if _status:
                     package_pc.status = _status
                     package_pc.updated_at = today
 
