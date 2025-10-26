@@ -45,5 +45,7 @@ urlpatterns = [
 
     path('meal-category/', MealCategoryView.as_view(), name='meal-category'),
 
-    path('meals/', MealView.as_view(), name='meals')
+    path('meals/', MealView.as_view(), name='meals'),
+
+    path('dashboard/', DashboardView.as_view(), name='dashboard')
 ]

@@ -1,5 +1,7 @@
 import os
 import logging
+import calendar
+
 import librosa
 import random
 import requests
@@ -13,7 +15,8 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.hashers import make_password, check_password
 from django.core.mail import EmailMessage
 from django.db import transaction
-from django.db.models import Q, F
+from django.db.models import Q, F, Sum, FloatField, IntegerField
+from django.db.models.functions import Cast
 from django.http import JsonResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.template.loader import get_template
@@ -23,6 +26,7 @@ from rest_framework.decorators import permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
+from users.models import CustomUsers
 from utils.exceptions import *
 from utils.permissions import role_required
 from utils.generateOrderId import OrderIDGenerator
@@ -4104,7 +4108,7 @@ class MealCategoryView(APIView):
 
                 serializer = MealCategorySerializer(meal_category)
 
-                return JsonResponse({"result": "success", "message": "Localization is created successfully.", "content": serializer.data},
+                return JsonResponse({"result": "success", "message": "Meal category is created successfully.", "content": serializer.data},
                                     status=status.HTTP_200_OK)
 
         except (BaseClassSerializerException, ValueDuplicationException, ValidationException) as e:
@@ -4403,4 +4407,84 @@ class MealView(APIView):
         except Exception as e:
             logger.error("Error occurred while deleting meal: %s", e)
             return JsonResponse({"result": "error", "message": "Error occurred while deleting meal"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+@permission_classes([IsAuthenticated, role_required(["super_admin", "admin"])])
+class DashboardView(APIView):
+    @extend_schema(
+        tags=["Dashboard"],
+        responses={200: dict}
+    )
+    def get(self, request):
+        try:
+            total_users = CustomUser.objects.filter(role='user').count()
+            total_courses = Course.objects.count()
+            total_meal_plans = MealPlan.objects.count()
+            total_items = Item.objects.count()
+
+            _today = timezone.now()
+            monthly_revenue = {}
+
+            for i in range(12):
+                month_date = _today - timedelta(days=30 * i)
+                month_name = calendar.month_abbr[month_date.month]
+
+                first_day = month_date.replace(day=1)
+                last_day = (first_day + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+                ecommerce_total = (
+                        EcommercePC.objects.filter(
+                            status__in=['confirmed', 'approved'],
+                            record_time__date__gte=first_day.date(),
+                            record_time__date__lte=last_day.date()
+                        ).annotate(
+                            total_price_num=Cast('total_price', FloatField())
+                        ).aggregate(total=Sum('total_price_num'))['total'] or 0
+                )
+                package_total = (
+                        PackagePC.objects.filter(
+                            status__in=['confirmed', 'approved'],
+                            record_time__date__gte=first_day.date(),
+                            record_time__date__lte=last_day.date()
+                        ).annotate(
+                            price_num=Cast('price', FloatField())
+                        ).aggregate(total=Sum('price_num'))['total'] or 0
+                )
+
+                monthly_revenue[month_name] = {
+                    'package': float(package_total),
+                    'ecommerce': float(ecommerce_total)
+                }
+
+            ordered_monthly_revenue = dict(list(monthly_revenue.items())[::-1])
+
+            # Get the top five package plans with the highest subscription
+            top_packages_data = list(
+                Package.objects.filter(is_deleted=False)
+                .annotate(subscribers_int=Cast('subscribers', IntegerField()))
+                .order_by('-subscribers_int')
+                .values('name', 'price', 'subscribers_int')[:5]
+            )
+
+            dashboard_data = {
+                'counts': {
+                    'total_users': total_users,
+                    'total_courses': total_courses,
+                    'total_meal_plans': total_meal_plans,
+                    'total_items': total_items
+                },
+                'revenue_last_12_months': ordered_monthly_revenue,
+                #'top_packages': top_packages_data
+            }
+
+            return JsonResponse(
+                {"result": "success", "message": "Meals list", "content": dashboard_data},
+                status=status.HTTP_200_OK)
+
+        except Http404:
+            return JsonResponse({"result": "error", "message": "No data are not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error("Error occurred while fetching dashboard data: %s", e)
+            return JsonResponse({"result": "error", "message": "Error occurred while fetching dashboard data."},
                                 status=status.HTTP_400_BAD_REQUEST)
