@@ -7,23 +7,42 @@
 [2025-08-06 05:01:32,480] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
 [2025-08-06 05:02:10,289] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
 [2025-08-06 05:02:11,578] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
-[2025-08-06 05:02:32,935] ERROR users.views - Error occurred while fetching course: ['“27ce43d7-b9eb-4368-b208-c44f0245e10b” is not a valid UUID.']
+[2025-08-06 05:02:32,935] ERROR users.views - Error occurred while fetching course: ['ï¿½27ce43d7-b9eb-4368-b208-c44f0245e10bï¿½ is not a valid UUID.']
 [2025-08-06 05:03:09,083] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
 [2025-08-06 05:09:57,234] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
 [2025-08-06 05:11:26,198] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
 [2025-08-06 05:15:16,280] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
-[2025-08-06 05:30:11,265] ERROR users.views - Error occurred while fetching course: ['“27ce43d7-b9eb-4368-b208-c44f0245e10b” is not a valid UUID.']
+[2025-08-06 05:30:11,265] ERROR users.views - Error occurred while fetching course: ['ï¿½27ce43d7-b9eb-4368-b208-c44f0245e10bï¿½ is not a valid UUID.']
 [2025-08-06 05:40:20,945] ERROR users.views - Error occurred while fetching meal plans: 'str' object has no attribute 'course'
 [2025-08-06 05:41:20,604] ERROR users.views - Error occurred while fetching meal plans: 'str' object has no attribute 'course'
 [2025-08-06 05:55:27,392] ERROR users.views - Error occurred while fetching meal plan: 'QuerySet' object has no attribute 'title'
-[2025-08-06 09:16:35,051] ERROR users.views - Error occurred while fetching audiobooks: ["“{'id': UUID('15cf052a-f2be-41b9-8ef4-67e0943cd48f'), 'name': 'updated name'}” is not a valid UUID."]
+[2025-08-06 09:16:35,051] ERROR users.views - Error occurred while fetching audiobooks: ["ï¿½{'id': UUID('15cf052a-f2be-41b9-8ef4-67e0943cd48f'), 'name': 'updated name'}ï¿½ is not a valid UUID."]
 [2025-08-06 09:21:52,115] ERROR users.views - Error occurred while fetching audiobook: 'QuerySet' object has no attribute 'name'
 [2025-08-06 11:01:39,407] ERROR users.views - Error occurred while creating playlist: Playlist name is already found.
 [2025-08-06 11:48:05,527] ERROR users.views - Error occurred while creating playlist: Playlist name is already found.
 [2025-08-06 11:50:59,846] ERROR users.views - Error occurred while creating playlist: Playlist name is already found.
-[2025-08-06 12:11:15,473] ERROR users.views - Error occurred while creating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6o” is not a valid UUID.']
-[2025-08-06 12:11:43,702] ERROR users.views - Error occurred while creating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6w” is not a valid UUID.']
-[2025-08-06 12:12:03,710] ERROR users.views - Error occurred while creating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6w” is not a valid UUID.']
-[2025-08-06 12:22:20,099] ERROR users.views - Error occurred while updating playlist: ['“286297c3-34f4-4d71-8319-c79b87711a6o” is not a valid UUID.']
+[2025-08-06 12:11:15,473] ERROR users.views - Error occurred while creating playlist: ['ï¿½286297c3-34f4-4d71-8319-c79b87711a6oï¿½ is not a valid UUID.']
+[2025-08-06 12:11:43,702] ERROR users.views - Error occurred while creating playlist: ['ï¿½286297c3-34f4-4d71-8319-c79b87711a6wï¿½ is not a valid UUID.']
+[2025-08-06 12:12:03,710] ERROR users.views - Error occurred while creating playlist: ['ï¿½286297c3-34f4-4d71-8319-c79b87711a6wï¿½ is not a valid UUID.']
+[2025-08-06 12:22:20,099] ERROR users.views - Error occurred while updating playlist: ['ï¿½286297c3-34f4-4d71-8319-c79b87711a6oï¿½ is not a valid UUID.']
 [2025-08-07 14:15:43,251] ERROR admins.views - Error occurred while creating audiobook: Invalid combination of format, subtype and endian
 [2025-08-18 18:57:11,248] ERROR admins.views - Error occurred while fetching ecommerce pcs: Cannot both declare the field 'items' and include it in the EcommercePCSerializer 'exclude' option. Remove the field or, if inherited from a parent serializer, disable with `items = None`.
+[2025-09-05 04:50:01,599] ERROR users.views - Error occurred while fetching courses: Invalid page.
+[2025-09-05 10:38:34,465] ERROR users.views - Error occurred while fetching courses: Unsupported lookup 'id' for ForeignKey or join on the field not permitted.
+[2025-09-05 10:38:46,507] ERROR users.views - Error occurred while fetching courses: Unsupported lookup 'id' for ForeignKey or join on the field not permitted.
+[2025-09-05 10:40:50,222] ERROR users.views - Error occurred while fetching courses: Unsupported lookup 'id' for ForeignKey or join on the field not permitted.
+[2025-09-06 00:44:01,418] ERROR users.views - Error occurred while fetching course: 'QuerySet' object has no attribute 'name'
+[2025-09-06 00:44:40,076] ERROR users.views - Error occurred while fetching course: Object of type Course is not JSON serializable
+[2025-09-06 00:44:45,207] ERROR users.views - Error occurred while fetching course: Object of type Course is not JSON serializable
+[2025-09-06 08:14:38,286] ERROR users.views - Error occurred while fetching meal plans: invalid literal for int() with base 10: ''
+[2025-09-26 22:04:12,030] ERROR users.views - Error occurred while fetching items: ['“” value must be a decimal number.']
+[2025-09-26 22:08:23,831] ERROR users.views - Error occurred while fetching items: ['“” value must be a decimal number.']
+[2025-10-09 14:31:00,341] ERROR admins.views - Error occurred while updating meal: 'name'
+[2025-10-09 14:34:16,988] ERROR admins.views - Error occurred while updating meal: 'name'
+[2025-10-09 17:36:57,841] ERROR users.views - Error occurred while calculating calories: select_meals_for_goal() missing 2 required positional arguments: 'target_calories' and 'target_macros'
+[2025-10-09 17:37:00,154] ERROR users.views - Error occurred while calculating calories: select_meals_for_goal() missing 2 required positional arguments: 'target_calories' and 'target_macros'
+[2025-10-26 20:35:53,778] ERROR admins.views - Error occurred while fetching dashboard data: function sum(character varying) does not exist
+LINE 1: SELECT SUM("admins_packagepc"."price") AS "total" FROM "admi...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+
