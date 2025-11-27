@@ -93,9 +93,9 @@ WSGI_APPLICATION = 'yerase.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'yerase-app',
-        'USER': 'postgres',
-        'PASSWORD': 'nati',
+        'NAME': '******',
+        'USER': '*****',
+        'PASSWORD': '*****',
         'HOST': 'localhost',
         'PORT': '5432',
     }
